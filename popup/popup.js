@@ -170,6 +170,13 @@ async function loadImageTabs() {
  * Set up all event listeners for user interactions
  */
 function setupEventListeners() {
+  // Listen for progress updates from background
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === 'downloadProgress') {
+      updateButtonState('saving', message.current, message.total);
+    }
+  });
+
   // Save all images button
   elements.saveAllBtn?.addEventListener('click', handleSaveAll);
 
@@ -505,6 +512,41 @@ function renderEmptyState(message) {
   emptyState.appendChild(icon);
   emptyState.appendChild(text);
   elements.tabsList.appendChild(emptyState);
+}
+
+/**
+ * Update the save button state and progress bar
+ * @param {string} state - 'idle', 'saving', or 'done'
+ * @param {number} current - Current progress
+ * @param {number} total - Total items
+ */
+function updateButtonState(state, current = 0, total = 0) {
+  if (!elements.saveAllBtn) return;
+
+  switch (state) {
+    case 'saving':
+      elements.saveAllBtn.disabled = true;
+      elements.saveAllBtn.classList.add('btn-progress');
+      const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+      elements.saveAllBtn.style.setProperty('--progress', `${percent}%`);
+      elements.saveAllBtn.textContent = `💾 Saving (${current}/${total})...`;
+      break;
+
+    case 'done':
+      elements.saveAllBtn.disabled = true;
+      elements.saveAllBtn.classList.add('btn-progress');
+      elements.saveAllBtn.style.setProperty('--progress', '100%');
+      elements.saveAllBtn.textContent = '💾 Done!';
+      break;
+
+    case 'idle':
+    default:
+      elements.saveAllBtn.disabled = false;
+      elements.saveAllBtn.classList.remove('btn-progress');
+      elements.saveAllBtn.style.removeProperty('--progress');
+      elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
+      break;
+  }
 }
 
 /**
