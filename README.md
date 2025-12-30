@@ -29,6 +29,8 @@ A **comprehensive, well-documented Chrome extension template** for building exte
 - [Publishing](#-publishing)
 - [Resources](#-resources)
 
+> 📚 **Need help navigating?** Check out [DOCS_INDEX.md](DOCS_INDEX.md) for a complete documentation guide with learning paths!
+
 ## 🚀 Quick Start
 
 ### Prerequisites
