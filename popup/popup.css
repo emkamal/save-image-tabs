@@ -1,0 +1,428 @@
+/**
+ * Popup CSS Styles
+ * 
+ * This stylesheet defines the visual appearance of the extension popup.
+ * The popup has a fixed width (typically 300-800px) and variable height.
+ * 
+ * Design Tips:
+ * - Keep the popup compact and focused
+ * - Use consistent spacing and colors
+ * - Ensure good contrast for readability
+ * - Support both light and dark themes if possible
+ * - Make buttons and interactive elements easily clickable
+ */
+
+/* ============================================================================
+   CSS VARIABLES (CUSTOM PROPERTIES)
+   Define your color scheme and spacing here for easy customization
+   ============================================================================ */
+
+:root {
+  /* Colors */
+  --primary-color: #4285f4;
+  --primary-hover: #3367d6;
+  --secondary-color: #5f6368;
+  --background-color: #ffffff;
+  --surface-color: #f8f9fa;
+  --border-color: #dadce0;
+  --text-primary: #202124;
+  --text-secondary: #5f6368;
+  --success-color: #34a853;
+  --error-color: #ea4335;
+  --warning-color: #fbbc04;
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.2);
+  
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+}
+
+/* Dark theme support (optional) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary-color: #8ab4f8;
+    --primary-hover: #aecbfa;
+    --secondary-color: #9aa0a6;
+    --background-color: #202124;
+    --surface-color: #292a2d;
+    --border-color: #3c4043;
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0a6;
+  }
+}
+
+/* ============================================================================
+   RESET AND BASE STYLES
+   ============================================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background-color: var(--background-color);
+  line-height: 1.5;
+  width: 400px;
+  min-height: 300px;
+  max-height: 600px;
+}
+
+/* ============================================================================
+   POPUP CONTAINER
+   ============================================================================ */
+
+.popup-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ============================================================================
+   HEADER
+   ============================================================================ */
+
+.popup-header {
+  padding: var(--spacing-md);
+  background: linear-gradient(135deg, var(--primary-color) 0%, #5e97f6 100%);
+  color: white;
+  text-align: center;
+}
+
+.popup-header h1 {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.popup-header .subtitle {
+  font-size: var(--font-size-sm);
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   STATS SECTION
+   ============================================================================ */
+
+.stats-section {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-md);
+  background-color: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.stat-number {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--primary-color);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+/* ============================================================================
+   TABS SECTION
+   ============================================================================ */
+
+.tabs-section {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-md);
+}
+
+.tabs-section h2 {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-primary);
+}
+
+.tabs-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+/* Custom scrollbar */
+.tabs-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tabs-list::-webkit-scrollbar-track {
+  background: var(--surface-color);
+}
+
+.tabs-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.tabs-list::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-color);
+}
+
+/* Tab item */
+.tab-item {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.tab-item:hover {
+  background-color: var(--background-color);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-item-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: var(--spacing-sm);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.tab-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-item-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-item-url {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Loading state */
+.loading {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--spacing-sm);
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  font-size: var(--font-size-base);
+}
+
+/* ============================================================================
+   ACTIONS SECTION
+   ============================================================================ */
+
+.actions-section {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+/* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  margin-right: var(--spacing-xs);
+}
+
+/* Primary button */
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background-color: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  flex: 0 0 auto;
+  padding: var(--spacing-sm);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--background-color);
+  border-color: var(--secondary-color);
+}
+
+/* ============================================================================
+   STATUS MESSAGE
+   ============================================================================ */
+
+.status-message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: 0 var(--spacing-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status-message.success {
+  background-color: rgba(52, 168, 83, 0.1);
+  color: var(--success-color);
+  border: 1px solid var(--success-color);
+}
+
+.status-message.error {
+  background-color: rgba(234, 67, 53, 0.1);
+  color: var(--error-color);
+  border: 1px solid var(--error-color);
+}
+
+.status-message.hidden {
+  display: none;
+}
+
+/* ============================================================================
+   FOOTER
+   ============================================================================ */
+
+.popup-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+  background-color: var(--surface-color);
+}
+
+.settings-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  transition: color 0.2s ease;
+}
+
+.settings-link:hover {
+  color: var(--primary-color);
+}
+
+.version {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* ============================================================================
+   UTILITY CLASSES
+   ============================================================================ */
+
+.hidden {
+  display: none !important;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.mt-sm { margin-top: var(--spacing-sm); }
+.mt-md { margin-top: var(--spacing-md); }
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }

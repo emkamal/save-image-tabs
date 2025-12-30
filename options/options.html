@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <!--
+    OPTIONS PAGE
+    
+    The options page is where users configure extension settings.
+    Unlike the popup, the options page:
+    - Opens in a full tab or embedded in chrome://extensions/
+    - Persists while open (not temporary like popup)
+    - Can be more complex with multiple sections
+    - Perfect for settings that don't change often
+    
+    Access: Right-click extension icon -> Options
+    Or: chrome://extensions/ -> Extension details -> Extension options
+  -->
+  
+  <div class="options-container">
+    <!-- Header -->
+    <header class="options-header">
+      <h1>⚙️ Extension Settings</h1>
+      <p class="subtitle">Configure your Save Image Tabs extension</p>
+    </header>
+    
+    <!-- Settings Form -->
+    <main class="options-main">
+      <!-- Download Settings Section -->
+      <section class="settings-section">
+        <h2>Download Settings</h2>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="autoDownload" class="setting-label">Auto Download</label>
+            <p class="setting-description">
+              Start downloads immediately without showing save dialog
+            </p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle">
+              <input type="checkbox" id="autoDownload">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="downloadFormat" class="setting-label">Download Format</label>
+            <p class="setting-description">
+              Choose how to save downloaded images
+            </p>
+          </div>
+          <div class="setting-control">
+            <select id="downloadFormat" class="select-input">
+              <option value="original">Keep Original Format</option>
+              <option value="png">Convert to PNG</option>
+              <option value="jpg">Convert to JPG</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="saveLocation" class="setting-label">Save Location</label>
+            <p class="setting-description">
+              Default folder for saved images
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="text" id="saveLocation" class="text-input" placeholder="downloads">
+          </div>
+        </div>
+      </section>
+      
+      <!-- Notification Settings Section -->
+      <section class="settings-section">
+        <h2>Notifications</h2>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="notification" class="setting-label">Show Notifications</label>
+            <p class="setting-description">
+              Display notifications when images are downloaded
+            </p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle">
+              <input type="checkbox" id="notification">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+      
+      <!-- Advanced Settings Section -->
+      <section class="settings-section">
+        <h2>Advanced</h2>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="maxConcurrent" class="setting-label">Max Concurrent Downloads</label>
+            <p class="setting-description">
+              Maximum number of simultaneous downloads (1-10)
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="number" id="maxConcurrent" class="number-input" min="1" max="10" value="3">
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="fileNaming" class="setting-label">File Naming Pattern</label>
+            <p class="setting-description">
+              Pattern for naming downloaded files. Use {name}, {date}, {index}
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="text" id="fileNaming" class="text-input" placeholder="{name}_{date}">
+          </div>
+        </div>
+      </section>
+      
+      <!-- Data Management Section -->
+      <section class="settings-section">
+        <h2>Data Management</h2>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <p class="setting-label">Export Settings</p>
+            <p class="setting-description">
+              Save your settings to a file
+            </p>
+          </div>
+          <div class="setting-control">
+            <button id="exportBtn" class="btn btn-secondary">Export</button>
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <p class="setting-label">Import Settings</p>
+            <p class="setting-description">
+              Load settings from a file
+            </p>
+          </div>
+          <div class="setting-control">
+            <button id="importBtn" class="btn btn-secondary">Import</button>
+            <input type="file" id="importFile" accept=".json" style="display: none;">
+          </div>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <p class="setting-label">Reset Settings</p>
+            <p class="setting-description">
+              Restore all settings to default values
+            </p>
+          </div>
+          <div class="setting-control">
+            <button id="resetBtn" class="btn btn-danger">Reset to Defaults</button>
+          </div>
+        </div>
+      </section>
+      
+      <!-- About Section -->
+      <section class="settings-section">
+        <h2>About</h2>
+        
+        <div class="about-content">
+          <p><strong>Version:</strong> 1.0.0</p>
+          <p><strong>Description:</strong> Chrome extension template for saving image tabs</p>
+          <p><strong>Developer:</strong> Your Name</p>
+          <div class="about-links">
+            <a href="https://github.com/yourusername/extension" target="_blank" class="link">GitHub</a>
+            <a href="#" id="licenseLink" class="link">License</a>
+            <a href="#" id="changelogLink" class="link">Changelog</a>
+          </div>
+        </div>
+      </section>
+    </main>
+    
+    <!-- Footer with Save Button -->
+    <footer class="options-footer">
+      <div id="statusMessage" class="status-message hidden"></div>
+      <div class="footer-actions">
+        <button id="saveBtn" class="btn btn-primary">💾 Save Settings</button>
+      </div>
+    </footer>
+  </div>
+  
+  <script src="options.js"></script>
+</body>
+</html>
