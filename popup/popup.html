@@ -7,35 +7,47 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <!-- 
+  <!--
     POPUP STRUCTURE
-    
+
     This is the popup that appears when you click the extension icon.
     Popups are temporary - they close when the user clicks outside them.
-    
+
     Keep popups:
     - Simple and focused on main actions
     - Quick to load (minimize external resources)
     - Responsive to user actions
-    
+
     For complex settings, use the options page instead.
   -->
-  
+
   <div class="popup-container">
     <!-- Header Section -->
     <header class="popup-header">
       <h1>Save Image Tabs</h1>
       <p class="subtitle">Bulk save all image tabs at once</p>
     </header>
-    
-    <!-- Stats Section -->
+
     <section class="stats-section">
       <div class="stat-item">
-        <span class="stat-number" id="imageCount">-</span>
-        <span class="stat-label">Image Tabs</span>
+        <span class="stat-number" id="imageCount">0</span>
+        <span class="stat-label">Detected Images</span>
       </div>
     </section>
-    
+
+    <!-- Options Section -->
+    <section class="options-section">
+      <div class="input-group">
+        <label for="folderName">Folder Name</label>
+        <input type="text" id="folderName" placeholder="YYYYMMDD_HHMMSS (default)" class="form-control">
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="closeTabs" name="closeTabs">
+        <label for="closeTabs">Close tab after download</label>
+      </div>
+    </section>
+
     <!-- Image Tabs List -->
     <section class="tabs-section">
       <h2>Image Tabs</h2>
@@ -44,31 +56,31 @@
         <div class="loading">Loading...</div>
       </div>
     </section>
-    
+
     <!-- Action Buttons -->
     <section class="actions-section">
       <button id="saveAllBtn" class="btn btn-primary" disabled>
         <span class="btn-icon">💾</span>
         Save All Images
       </button>
-      
+
       <button id="refreshBtn" class="btn btn-secondary">
         <span class="btn-icon">🔄</span>
         Refresh
       </button>
     </section>
-    
+
     <!-- Status Message -->
     <div id="statusMessage" class="status-message hidden"></div>
-    
+
     <!-- Footer with Settings Link -->
     <footer class="popup-footer">
       <a href="#" id="settingsLink" class="settings-link">⚙️ Settings</a>
       <span class="version">v1.0.0</span>
     </footer>
   </div>
-  
-  <!-- 
+
+  <!--
     IMPORTANT: Script must be loaded at the end or use defer
     Popup scripts run in a separate context from the page
   -->

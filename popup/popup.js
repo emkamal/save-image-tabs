@@ -1,19 +1,19 @@
 /**
  * Popup JavaScript
- * 
+ *
  * This script handles the popup UI logic and user interactions.
  * The popup has its own JavaScript context, separate from content scripts and background.
- * 
+ *
  * POPUP LIFECYCLE:
  * - Opens when user clicks extension icon
  * - Closes when user clicks outside or switches tabs
  * - State is not preserved between opens (reload each time)
- * 
+ *
  * COMMUNICATION:
  * - Use chrome.runtime.sendMessage() to communicate with background script
  * - Use chrome.tabs.sendMessage() to communicate with content scripts
  * - Use chrome.storage to persist data between popup sessions
- * 
+ *
  * TIPS:
  * - Keep popup loading fast (minimize external requests)
  * - Cache data when possible
@@ -49,7 +49,9 @@ const elements = {
   saveAllBtn: document.getElementById('saveAllBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   settingsLink: document.getElementById('settingsLink'),
-  statusMessage: document.getElementById('statusMessage')
+  statusMessage: document.getElementById('statusMessage'),
+  folderName: document.getElementById('folderName'),
+  closeTabs: document.getElementById('closeTabs')
 };
 
 // ============================================================================
@@ -62,17 +64,17 @@ const elements = {
  */
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Popup loaded');
-  
+
   try {
     // Load settings and image tabs in parallel
     await Promise.all([
       loadSettings(),
       loadImageTabs()
     ]);
-    
+
     // Set up event listeners
     setupEventListeners();
-    
+
   } catch (error) {
     console.error('Error initializing popup:', error);
     showStatus('Failed to load extension', 'error');
@@ -90,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadSettings() {
   try {
     const response = await sendMessageToBackground({ action: 'getSettings' });
-    
+
     if (response.success) {
       state.settings = response.settings;
       console.log('Settings loaded:', state.settings);
@@ -107,14 +109,14 @@ async function loadSettings() {
 async function loadImageTabs() {
   try {
     state.loading = true;
-    
+
     // Request image tabs from background script
     const response = await sendMessageToBackground({ action: 'getImageTabs' });
-    
+
     if (response.success) {
       state.imageTabs = response.tabs;
       console.log('Image tabs loaded:', state.imageTabs.length);
-      
+
       // Update UI
       updateImageCount();
       renderTabsList();
@@ -141,13 +143,13 @@ async function loadImageTabs() {
 function setupEventListeners() {
   // Save all images button
   elements.saveAllBtn?.addEventListener('click', handleSaveAll);
-  
+
   // Refresh button
   elements.refreshBtn?.addEventListener('click', handleRefresh);
-  
+
   // Settings link
   elements.settingsLink?.addEventListener('click', handleOpenSettings);
-  
+
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyPress);
 }
@@ -158,29 +160,31 @@ function setupEventListeners() {
  */
 async function handleSaveAll() {
   console.log('Save all clicked');
-  
+
   if (state.imageTabs.length === 0) {
     showStatus('No image tabs to save', 'error');
     return;
   }
-  
+
   try {
     // Disable button while saving
     elements.saveAllBtn.disabled = true;
     elements.saveAllBtn.textContent = '💾 Saving...';
-    
+
     // Extract URLs from tabs
     const urls = state.imageTabs.map(tab => tab.url);
-    
+
     // Send message to background script to save images
     const response = await sendMessageToBackground({
       action: 'saveImages',
-      urls: urls
+      tabs: state.imageTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
+      folderName: elements.folderName?.value || '',
+      closeTabs: elements.closeTabs?.checked || false
     });
-    
+
     if (response.success) {
       showStatus(`Started downloading ${response.count} image(s)`, 'success');
-      
+
       // Close popup after a short delay (optional)
       // setTimeout(() => window.close(), 1500);
     } else {
@@ -202,10 +206,10 @@ async function handleSaveAll() {
  */
 async function handleRefresh() {
   console.log('Refresh clicked');
-  
+
   elements.refreshBtn.disabled = true;
   elements.refreshBtn.textContent = '🔄 Refreshing...';
-  
+
   try {
     await loadImageTabs();
     showStatus('Refreshed successfully', 'success');
@@ -225,10 +229,10 @@ async function handleRefresh() {
 function handleOpenSettings(event) {
   event.preventDefault();
   console.log('Opening settings');
-  
+
   // Open options page in a new tab
   chrome.runtime.openOptionsPage();
-  
+
   // Optional: Close popup after opening settings
   // window.close();
 }
@@ -243,12 +247,12 @@ function handleKeyPress(event) {
     event.preventDefault();
     handleSaveAll();
   }
-  
+
   // Escape: Close popup
   if (event.key === 'Escape') {
     window.close();
   }
-  
+
   // F5 or Ctrl/Cmd + R: Refresh
   if (event.key === 'F5' || ((event.ctrlKey || event.metaKey) && event.key === 'r')) {
     event.preventDefault();
@@ -284,16 +288,16 @@ function updateSaveButton() {
  */
 function renderTabsList() {
   if (!elements.tabsList) return;
-  
+
   // Clear existing content
   elements.tabsList.innerHTML = '';
-  
+
   // Show empty state if no tabs
   if (state.imageTabs.length === 0) {
     renderEmptyState();
     return;
   }
-  
+
   // Create tab items
   state.imageTabs.forEach(tab => {
     const tabItem = createTabItem(tab);
@@ -310,38 +314,38 @@ function createTabItem(tab) {
   const item = document.createElement('div');
   item.className = 'tab-item';
   item.title = tab.url;
-  
+
   // Icon
   const icon = document.createElement('div');
   icon.className = 'tab-item-icon';
   icon.textContent = '🖼️';
-  
+
   // Content
   const content = document.createElement('div');
   content.className = 'tab-item-content';
-  
+
   // Title
   const title = document.createElement('div');
   title.className = 'tab-item-title';
   title.textContent = tab.title || 'Untitled';
-  
+
   // URL
   const url = document.createElement('div');
   url.className = 'tab-item-url';
   url.textContent = tab.url;
-  
+
   // Assemble
   content.appendChild(title);
   content.appendChild(url);
   item.appendChild(icon);
   item.appendChild(content);
-  
+
   // Click handler - switch to tab
   item.addEventListener('click', () => {
     chrome.tabs.update(tab.id, { active: true });
     window.close();
   });
-  
+
   return item;
 }
 
@@ -351,18 +355,18 @@ function createTabItem(tab) {
  */
 function renderEmptyState(message) {
   if (!elements.tabsList) return;
-  
+
   const emptyState = document.createElement('div');
   emptyState.className = 'empty-state';
-  
+
   const icon = document.createElement('div');
   icon.className = 'empty-state-icon';
   icon.textContent = '📂';
-  
+
   const text = document.createElement('div');
   text.className = 'empty-state-text';
   text.textContent = message || 'No image tabs found';
-  
+
   emptyState.appendChild(icon);
   emptyState.appendChild(text);
   elements.tabsList.appendChild(emptyState);
@@ -375,11 +379,11 @@ function renderEmptyState(message) {
  */
 function showStatus(message, type = 'success') {
   if (!elements.statusMessage) return;
-  
+
   // Set message and type
   elements.statusMessage.textContent = message;
   elements.statusMessage.className = `status-message ${type}`;
-  
+
   // Auto-hide after 3 seconds
   setTimeout(() => {
     elements.statusMessage.classList.add('hidden');
@@ -393,7 +397,7 @@ function showStatus(message, type = 'success') {
 /**
  * Send a message to the background script
  * Wraps chrome.runtime.sendMessage in a Promise for easier async/await usage
- * 
+ *
  * @param {Object} message - Message to send
  * @returns {Promise<Object>} - Response from background script
  */
@@ -405,7 +409,7 @@ function sendMessageToBackground(message) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      
+
       resolve(response);
     });
   });
@@ -424,7 +428,7 @@ function sendMessageToTab(tabId, message) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
-      
+
       resolve(response);
     });
   });
@@ -446,11 +450,11 @@ function formatNumber(num) {
  */
 function formatFileSize(bytes) {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
@@ -486,7 +490,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 /**
  * BEST PRACTICES:
- * 
+ *
  * 1. Keep popup loading fast - minimize external resources and API calls
  * 2. Cache DOM elements - don't query the same element multiple times
  * 3. Use async/await for cleaner asynchronous code
@@ -495,24 +499,24 @@ if (typeof module !== 'undefined' && module.exports) {
  * 6. Use chrome.storage for data that needs to persist between popup opens
  * 7. Test with different states (no tabs, many tabs, slow network, etc.)
  * 8. Make the UI responsive to user actions
- * 
+ *
  * DEBUGGING:
- * 
+ *
  * 1. Right-click extension icon -> Inspect popup
  * 2. Console logs appear in popup DevTools
  * 3. Popup closes when DevTools loses focus (can be annoying)
  * 4. Use debugger statements to pause execution
  * 5. Call window.debugState() to inspect current state
- * 
+ *
  * COMMUNICATION PATTERNS:
- * 
+ *
  * 1. Popup -> Background: chrome.runtime.sendMessage()
  * 2. Popup -> Content Script: chrome.tabs.sendMessage(tabId, message)
  * 3. Background -> Popup: Not directly possible (popup must request data)
  * 4. Use chrome.storage.onChanged to react to storage updates
- * 
+ *
  * COMMON ISSUES:
- * 
+ *
  * 1. "Extension context invalidated" - Happens after extension update/reload
  * 2. Popup doesn't preserve state - Reload data on each open
  * 3. Messages not received - Check that background script is running

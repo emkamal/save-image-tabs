@@ -1,13 +1,13 @@
 /**
  * Background Service Worker
- * 
- * This is the background script for the Chrome extension. In Manifest V3, 
+ *
+ * This is the background script for the Chrome extension. In Manifest V3,
  * background scripts run as service workers, which means they:
  * - Only run when needed (event-driven)
  * - Terminate when idle
  * - Don't have access to DOM
  * - Can't use window, document, or localStorage
- * 
+ *
  * Use this script for:
  * - Listening to browser events (tabs, windows, downloads, etc.)
  * - Managing extension state
@@ -17,8 +17,15 @@
  */
 
 // ============================================================================
-// LIFECYCLE EVENTS
+// STATE MANAGEMENT
 // ============================================================================
+
+/**
+ * Keep track of folder names used in this session to handle increments
+ */
+const sessionState = {
+  folderUsage: {}
+};
 
 /**
  * Fired when the extension is first installed, updated, or Chrome is updated
@@ -26,7 +33,7 @@
  */
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('Extension installed or updated:', details);
-  
+
   // Initialize default settings
   if (details.reason === 'install') {
     chrome.storage.sync.set({
@@ -37,11 +44,11 @@ chrome.runtime.onInstalled.addListener((details) => {
     }, () => {
       console.log('Default settings initialized');
     });
-    
+
     // Open options page on first install
     chrome.runtime.openOptionsPage();
   }
-  
+
   // Handle extension updates
   if (details.reason === 'update') {
     console.log('Extension updated from version:', details.previousVersion);
@@ -63,7 +70,7 @@ chrome.runtime.onStartup.addListener(() => {
 /**
  * Listen for messages from content scripts, popup, or other parts of the extension
  * This is the primary way different parts of your extension communicate
- * 
+ *
  * @param {Object} message - The message object sent from another part of the extension
  * @param {Object} sender - Information about the sender (tab, frame, extension)
  * @param {Function} sendResponse - Function to call to send a response back
@@ -71,21 +78,21 @@ chrome.runtime.onStartup.addListener(() => {
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message received:', message, 'from:', sender);
-  
+
   // Handle different message types
   switch (message.action) {
     case 'getImageTabs':
       handleGetImageTabs(sendResponse);
       return true; // Will respond asynchronously
-      
+
     case 'saveImages':
-      handleSaveImages(message.urls, sendResponse);
+      handleSaveImages(message.tabs, message.folderName, message.closeTabs, sendResponse);
       return true;
-      
+
     case 'getSettings':
       handleGetSettings(sendResponse);
       return true;
-      
+
     default:
       sendResponse({ success: false, error: 'Unknown action' });
   }
@@ -111,7 +118,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   // Only log when tab is completely loaded
   if (changeInfo.status === 'complete') {
     console.log('Tab loaded:', tabId, tab.url);
-    
+
     // Check if this is an image tab
     if (isImageUrl(tab.url)) {
       console.log('Image tab detected:', tab.url);
@@ -139,7 +146,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
  */
 chrome.commands.onCommand.addListener((command) => {
   console.log('Command received:', command);
-  
+
   switch (command) {
     case 'save-all-images':
       handleSaveAllImagesCommand();
@@ -161,13 +168,13 @@ chrome.runtime.onInstalled.addListener(() => {
     id: 'saveImage',
     title: 'Save this image tab',
     contexts: ['page'],
-    documentUrlPatterns: ['*://*/*.jpg', '*://*/*.jpeg', '*://*/*.png', '*://*/*.gif', '*://*/*.webp']
+    documentUrlPatterns: ['*://*/*.jpg', ' *://*/*.jpeg', '*://*/*.png', '*://*/*.gif', '*://*/*.webp']
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'saveImage') {
-    handleSaveImages([tab.url], (response) => {
+    handleSaveImages([{ id: tab.id, url: tab.url, title: tab.title }], '', false, (response) => {
       console.log('Image saved via context menu:', response);
     });
   }
@@ -185,13 +192,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 async function handleGetImageTabs(callback) {
   try {
     // Query all tabs in the current window
-    const tabs = await chrome.tabs.query({});
-    
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+
     // Filter for image tabs
     const imageTabs = tabs.filter(tab => isImageUrl(tab.url));
-    
-    callback({ 
-      success: true, 
+
+    callback({
+      success: true,
       tabs: imageTabs.map(tab => ({
         id: tab.id,
         url: tab.url,
@@ -210,41 +217,80 @@ async function handleGetImageTabs(callback) {
  * @param {Array<string>} urls - Array of image URLs to download
  * @param {Function} callback - Function to call with the results
  */
-async function handleSaveImages(urls, callback) {
+/**
+ * Save multiple images to the downloads folder
+ * @param {Array<Object>} tabs - Array of tab objects ({id, url, title})
+ * @param {string} folderName - Subfolder name
+ * @param {boolean} closeTabs - Whether to close tabs after download
+ * @param {Function} callback - Function to call with the results
+ */
+async function handleSaveImages(tabs, folderName, closeTabs, callback) {
   try {
     // Get user settings
     const settings = await chrome.storage.sync.get(['autoDownload', 'notification']);
-    
-    const downloadIds = [];
-    
-    // Download each image
-    for (const url of urls) {
-      try {
-        const downloadId = await chrome.downloads.download({
-          url: url,
-          saveAs: !settings.autoDownload, // Show save dialog unless auto-download is enabled
-          filename: getFilenameFromUrl(url)
-        });
-        
-        downloadIds.push(downloadId);
-        console.log('Download started:', downloadId, url);
-      } catch (error) {
-        console.error('Failed to download:', url, error);
+
+    // Process folder name
+    let finalFolderName = folderName.trim();
+    if (!finalFolderName) {
+      finalFolderName = getTimestampFolder();
+    } else {
+      // Handle incrementing if custom folder name used before in this session
+      if (sessionState.folderUsage[finalFolderName]) {
+        sessionState.folderUsage[finalFolderName]++;
+        finalFolderName = `${finalFolderName}${sessionState.folderUsage[finalFolderName]}`;
+      } else {
+        sessionState.folderUsage[finalFolderName] = 0; // First time, no suffix
       }
     }
-    
+
+    const downloadIds = [];
+    const successfulTabs = [];
+
+    // Download each image
+    for (let i = 0; i < tabs.length; i++) {
+      const tab = tabs[i];
+      try {
+        let filename = getFilenameFromTab(tab);
+
+        // If filename is empty, use imageN
+        if (!filename || filename === 'image.jpg') {
+          filename = `image${i + 1}.jpg`;
+        }
+
+        const fullPath = `${finalFolderName}/${filename}`;
+
+        const downloadId = await chrome.downloads.download({
+          url: tab.url,
+          saveAs: false, // Override settings to make it seamless as requested
+          filename: fullPath,
+          conflictAction: 'uniquify' // Let chrome handle duplicate filenames
+        });
+
+        downloadIds.push(downloadId);
+        successfulTabs.push(tab.id);
+        console.log('Download started:', downloadId, tab.url);
+      } catch (error) {
+        console.error('Failed to download:', tab.url, error);
+      }
+    }
+
+    // Close tabs if requested and download started successfully
+    if (closeTabs && successfulTabs.length > 0) {
+      chrome.tabs.remove(successfulTabs);
+    }
+
     // Show notification if enabled
-    if (settings.notification) {
+    if (settings.notification && downloadIds.length > 0) {
       chrome.notifications?.create({
         type: 'basic',
         iconUrl: 'icons/icon48.png',
         title: 'Images Saved',
-        message: `Started downloading ${downloadIds.length} image(s)`
+        message: `Started downloading ${downloadIds.length} image(s) to ${finalFolderName}`
       });
     }
-    
-    callback({ 
-      success: true, 
+
+    callback({
+      success: true,
       downloadIds: downloadIds,
       count: downloadIds.length
     });
@@ -252,6 +298,44 @@ async function handleSaveImages(urls, callback) {
     console.error('Error saving images:', error);
     callback({ success: false, error: error.message });
   }
+}
+
+/**
+ * Generate a timestamp string in YYYYMMDD_HHMMSS format
+ * @returns {string}
+ */
+function getTimestampFolder() {
+  const now = new Date();
+  const pad = (n) => n.toString().padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const mm = pad(now.getMonth() + 1);
+  const dd = pad(now.getDate());
+  const HH = pad(now.getHours());
+  const MM = pad(now.getMinutes());
+  const SS = pad(now.getSeconds());
+  return `${yyyy}${mm}${dd}_${HH}${MM}${SS}`;
+}
+
+/**
+ * Try to get a filename from tab title or URL
+ * @param {Object} tab
+ * @returns {string}
+ */
+function getFilenameFromTab(tab) {
+  // If URL is data, try title or return empty
+  if (tab.url.startsWith('data:')) {
+    if (tab.title && tab.title !== 'data:image...') {
+      // Clean title and ensure extension
+      let title = tab.title.replace(/[<>:"/\\|?*]/g, '').trim();
+      if (!title.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg|ico)$/i)) {
+        title += '.jpg'; // Default extension for data images if missing
+      }
+      return title;
+    }
+    return ''; // Will fallback to imageN
+  }
+
+  return getFilenameFromUrl(tab.url);
 }
 
 /**
@@ -273,16 +357,16 @@ async function handleGetSettings(callback) {
  */
 async function handleSaveAllImagesCommand() {
   console.log('Save all images command triggered');
-  
+
   // Get all image tabs
   const tabs = await chrome.tabs.query({});
   const imageTabs = tabs.filter(tab => isImageUrl(tab.url));
-  
+
   if (imageTabs.length === 0) {
     console.log('No image tabs found');
     return;
   }
-  
+
   // Extract URLs and save them
   const urls = imageTabs.map(tab => tab.url);
   handleSaveImages(urls, (response) => {
@@ -297,13 +381,16 @@ async function handleSaveAllImagesCommand() {
  */
 function isImageUrl(url) {
   if (!url) return false;
-  
+
+  // SUPPORT FOR DATA URLS
+  if (url.startsWith('data:image/')) return true;
+
   // Common image extensions
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico'];
-  
-  // Check if URL ends with an image extension
-  const urlLower = url.toLowerCase();
-  return imageExtensions.some(ext => urlLower.includes(ext));
+
+  // Check if URL ends with an image extension (excluding query params)
+  const urlLower = url.toLowerCase().split('?')[0].split('#')[0];
+  return imageExtensions.some(ext => urlLower.endsWith(ext));
 }
 
 /**
@@ -358,7 +445,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
  */
 chrome.storage.onChanged.addListener((changes, areaName) => {
   console.log('Storage changed in', areaName, ':', changes);
-  
+
   // Example: React to settings changes
   if (changes.notification) {
     console.log('Notification setting changed:', changes.notification.newValue);
@@ -390,7 +477,7 @@ self.addEventListener('unhandledrejection', (event) => {
 
 /**
  * BEST PRACTICES:
- * 
+ *
  * 1. Keep service workers lightweight - they should start and stop quickly
  * 2. Use chrome.storage instead of localStorage (service workers can't use localStorage)
  * 3. Use message passing to communicate with content scripts and popup
@@ -399,17 +486,17 @@ self.addEventListener('unhandledrejection', (event) => {
  * 6. Remember that service workers are terminated when idle
  * 7. Use chrome.alarms for scheduled tasks instead of setTimeout/setInterval
  * 8. All API calls should be async/await or promise-based
- * 
+ *
  * DEBUGGING:
- * 
+ *
  * 1. Open chrome://extensions/
  * 2. Enable "Developer mode"
  * 3. Click "service worker" link under your extension to open DevTools
  * 4. Console logs will appear in the service worker DevTools
  * 5. Service worker will show as "inactive" when not running
- * 
+ *
  * COMMON APIS:
- * 
+ *
  * - chrome.tabs: Manage browser tabs
  * - chrome.windows: Manage browser windows
  * - chrome.storage: Store and retrieve data
