@@ -161,6 +161,25 @@ function setupEventListeners() {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyPress);
+
+  // Listen for progress updates from background
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === 'downloadProgress') {
+      updateProgressUI(message.current, message.total);
+    }
+  });
+}
+
+/**
+ * Update the save button with progress
+ */
+function updateProgressUI(current, total) {
+  if (elements.saveAllBtn) {
+    const percentage = Math.round((current / total) * 100);
+    elements.saveAllBtn.style.setProperty('--progress', `${percentage}%`);
+    elements.saveAllBtn.textContent = `💾 Saving (${current}/${total})...`;
+    elements.saveAllBtn.classList.add('btn-progress');
+  }
 }
 
 /**
@@ -193,13 +212,6 @@ async function handleSaveAll() {
   }
 
   try {
-    // Disable button while saving
-    elements.saveAllBtn.disabled = true;
-    elements.saveAllBtn.textContent = '💾 Saving...';
-
-    // Extract URLs from tabs
-    const urls = state.imageTabs.map(tab => tab.url);
-
     // Extract selected tabs
     const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
 
@@ -207,6 +219,12 @@ async function handleSaveAll() {
       showStatus('No items selected', 'error');
       return;
     }
+
+    // Disable button while saving
+    elements.saveAllBtn.disabled = true;
+    elements.saveAllBtn.classList.add('btn-progress');
+    elements.saveAllBtn.style.setProperty('--progress', '0%');
+    elements.saveAllBtn.textContent = '💾 Starting...';
 
     // Send message to background script to save images
     const response = await sendMessageToBackground({
@@ -218,17 +236,29 @@ async function handleSaveAll() {
 
     if (response.success) {
       showStatus(`Started downloading ${response.count} image(s)`, 'success');
+      elements.saveAllBtn.textContent = '💾 Done!';
+      elements.saveAllBtn.style.setProperty('--progress', '100%');
 
-      // Close popup after a short delay (optional)
-      // setTimeout(() => window.close(), 1500);
+      // Close popup after a short delay if all tabs were closed anyway
+      if (elements.closeTabs?.checked) {
+        setTimeout(() => window.close(), 1000);
+      } else {
+        // Reset button after 2 seconds
+        setTimeout(() => {
+          elements.saveAllBtn.classList.remove('btn-progress');
+          elements.saveAllBtn.style.removeProperty('--progress');
+          updateSaveButton();
+          elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
+          handleRefresh(); // Update list in case some tabs were manually closed
+        }, 2000);
+      }
     } else {
       throw new Error(response.error || 'Failed to save images');
     }
   } catch (error) {
     console.error('Error saving images:', error);
     showStatus('Failed to save images', 'error');
-  } finally {
-    // Re-enable button
+    elements.saveAllBtn.classList.remove('btn-progress');
     elements.saveAllBtn.disabled = false;
     elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
   }

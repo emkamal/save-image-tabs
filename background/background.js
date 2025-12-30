@@ -267,6 +267,15 @@ async function handleSaveImages(tabs, folderName, closeTabs, callback) {
         downloadIds.push(downloadId);
         successfulTabs.push(tab.id);
         console.log('Download started:', downloadId, tab.url);
+
+        // Send progress update to popup
+        chrome.runtime.sendMessage({
+          action: 'downloadProgress',
+          current: i + 1,
+          total: tabs.length
+        }).catch(() => {
+          // Ignore error if popup is closed
+        });
       } catch (error) {
         console.error('Failed to download:', tab.url, error);
       }

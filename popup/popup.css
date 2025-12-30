@@ -416,10 +416,31 @@ body {
 .btn-primary {
   background-color: var(--primary-color);
   color: white;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-primary:hover:not(:disabled) {
   background-color: var(--primary-hover);
+}
+
+/* Progress indicator on button */
+.btn-progress {
+  background: linear-gradient(to right,
+      var(--success-color) var(--progress, 0%),
+      var(--primary-color) var(--progress, 0%)) !important;
+  transition: background 0.2s ease;
+}
+
+.btn-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
 }
 
 /* Secondary button */
