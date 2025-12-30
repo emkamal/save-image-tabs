@@ -31,6 +31,7 @@
  */
 const state = {
   imageTabs: [],
+  selectedTabIds: new Set(),
   settings: {},
   loading: true
 };
@@ -51,7 +52,8 @@ const elements = {
   settingsLink: document.getElementById('settingsLink'),
   statusMessage: document.getElementById('statusMessage'),
   folderName: document.getElementById('folderName'),
-  closeTabs: document.getElementById('closeTabs')
+  closeTabs: document.getElementById('closeTabs'),
+  selectAll: document.getElementById('selectAll')
 };
 
 // ============================================================================
@@ -117,6 +119,10 @@ async function loadImageTabs() {
       state.imageTabs = response.tabs;
       console.log('Image tabs loaded:', state.imageTabs.length);
 
+      // Initialize selection: select all by default
+      state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+      if (elements.selectAll) elements.selectAll.checked = true;
+
       // Update UI
       updateImageCount();
       renderTabsList();
@@ -150,8 +156,28 @@ function setupEventListeners() {
   // Settings link
   elements.settingsLink?.addEventListener('click', handleOpenSettings);
 
+  // Select all checkbox
+  elements.selectAll?.addEventListener('change', handleSelectAllToggle);
+
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyPress);
+}
+
+/**
+ * Handle select all toggle
+ */
+function handleSelectAllToggle(event) {
+  const isChecked = event.target.checked;
+  if (isChecked) {
+    state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+  } else {
+    state.selectedTabIds.clear();
+  }
+
+  // Re-render list to update checkboxes
+  renderTabsList();
+  updateImageCount();
+  updateSaveButton();
 }
 
 /**
@@ -174,10 +200,18 @@ async function handleSaveAll() {
     // Extract URLs from tabs
     const urls = state.imageTabs.map(tab => tab.url);
 
+    // Extract selected tabs
+    const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
+
+    if (selectedTabs.length === 0) {
+      showStatus('No items selected', 'error');
+      return;
+    }
+
     // Send message to background script to save images
     const response = await sendMessageToBackground({
       action: 'saveImages',
-      tabs: state.imageTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
+      tabs: selectedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
       folderName: elements.folderName?.value || '',
       closeTabs: elements.closeTabs?.checked || false
     });
@@ -269,7 +303,9 @@ function handleKeyPress(event) {
  */
 function updateImageCount() {
   if (elements.imageCount) {
-    elements.imageCount.textContent = state.imageTabs.length;
+    const selectedCount = state.selectedTabIds.size;
+    const totalCount = state.imageTabs.length;
+    elements.imageCount.textContent = totalCount > 0 ? `${selectedCount} / ${totalCount}` : '0';
   }
 }
 
@@ -279,7 +315,7 @@ function updateImageCount() {
  */
 function updateSaveButton() {
   if (elements.saveAllBtn) {
-    elements.saveAllBtn.disabled = state.imageTabs.length === 0;
+    elements.saveAllBtn.disabled = state.selectedTabIds.size === 0;
   }
 }
 
@@ -315,10 +351,32 @@ function createTabItem(tab) {
   item.className = 'tab-item';
   item.title = tab.url;
 
-  // Icon
+  // Selection Checkbox
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'tab-item-checkbox';
+  checkbox.checked = state.selectedTabIds.has(tab.id);
+  checkbox.addEventListener('click', (e) => {
+    e.stopPropagation(); // Don't trigger tab switch
+    if (checkbox.checked) {
+      state.selectedTabIds.add(tab.id);
+    } else {
+      state.selectedTabIds.delete(tab.id);
+      if (elements.selectAll) elements.selectAll.checked = false;
+    }
+    updateImageCount();
+    updateSaveButton();
+  });
+
+  // Icon / Preview
   const icon = document.createElement('div');
   icon.className = 'tab-item-icon';
-  icon.textContent = '🖼️';
+
+  const img = document.createElement('img');
+  img.src = tab.url;
+  // Fallback for data URLs that might not render or broken links
+  img.onerror = () => { img.src = '../icons/icon48.png'; };
+  icon.appendChild(img);
 
   // Content
   const content = document.createElement('div');
@@ -337,6 +395,7 @@ function createTabItem(tab) {
   // Assemble
   content.appendChild(title);
   content.appendChild(url);
+  item.appendChild(checkbox);
   item.appendChild(icon);
   item.appendChild(content);
 
@@ -466,7 +525,7 @@ function formatFileSize(bytes) {
  * Log current state for debugging
  * Call this from the browser console: popup.debugState()
  */
-window.debugState = function() {
+window.debugState = function () {
   console.log('Current State:', state);
   console.log('DOM Elements:', elements);
 };
