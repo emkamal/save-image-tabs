@@ -1,27 +1,6 @@
 /**
- * Content Script
- *
- * Content scripts run in the context of web pages, allowing you to read and modify
- * the DOM of web pages the user visits. They run in an isolated world, meaning:
- *
- * - They can access and modify the DOM
- * - They can't access variables or functions from the page's JavaScript
- * - They can't access variables or functions from the background script
- * - They must use message passing to communicate with background script
- *
- * WHEN TO USE CONTENT SCRIPTS:
- * - Extract data from web pages
- * - Modify the appearance or behavior of web pages
- * - Detect certain patterns or content on pages
- * - Inject UI elements into pages
- * - Monitor user interactions with the page
- *
- * IMPORTANT NOTES:
- * - Content scripts run on pages matching patterns in manifest.json
- * - They're injected into existing tabs when the extension is installed/updated
- * - They run in a separate JavaScript context from the page
- * - Use chrome.storage for persistence (not localStorage)
- * - Be careful about performance impact on page load
+ * Content Script for Save Image Tabs
+ * Handles image detection and highlighting on web pages.
  */
 
 // ============================================================================

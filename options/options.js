@@ -1,19 +1,6 @@
 /**
- * Options Page JavaScript
- *
- * This script handles the options/settings page functionality.
- * The options page allows users to configure extension behavior.
- *
- * KEY DIFFERENCES FROM POPUP:
- * - Opens in full tab (more space for complex settings)
- * - Persists while open (unlike popup which closes easily)
- * - Changes are typically saved explicitly with a "Save" button
- * - Can have multiple sections and complex forms
- *
- * STORAGE:
- * - Use chrome.storage.sync for settings that sync across devices
- * - Use chrome.storage.local for device-specific settings
- * - Always provide default values for all settings
+ * Options Page Logic for Save Image Tabs
+ * Manages configuration and settings persistence.
  */
 
 // ============================================================================
@@ -425,46 +412,5 @@ window.debugState = async function () {
   console.log('Form elements:', elements);
 };
 
-// ============================================================================
-// NOTES FOR DEVELOPERS
-// ============================================================================
-
-/**
- * BEST PRACTICES:
- *
- * 1. Always provide default values for all settings
- * 2. Validate user input before saving
- * 3. Show clear feedback when settings are saved
- * 4. Consider auto-save vs manual save based on use case
- * 5. Support import/export for advanced users
- * 6. Organize settings into logical sections
- * 7. Provide helpful descriptions for each setting
- * 8. Test with extreme values and edge cases
- *
- * STORAGE TIPS:
- *
- * 1. chrome.storage.sync: Max 100KB, syncs across devices
- * 2. chrome.storage.local: Max 5MB, local to device
- * 3. Use storage.sync for user preferences
- * 4. Use storage.local for large data or device-specific data
- * 5. Always handle storage errors gracefully
- * 6. Consider migration strategy for setting changes
- *
- * FORM VALIDATION:
- *
- * 1. Validate on client side before saving
- * 2. Provide clear error messages
- * 3. Use HTML5 input types and attributes (min, max, pattern)
- * 4. Disable save button if form is invalid
- * 5. Highlight invalid fields
- *
- * ACCESSIBILITY:
- *
- * 1. Use proper label elements
- * 2. Ensure keyboard navigation works
- * 3. Provide ARIA labels where needed
- * 4. Test with screen readers
- * 5. Ensure sufficient color contrast
- */
 
 console.log('Options page script loaded successfully');

@@ -1,24 +1,5 @@
 /**
- * Popup JavaScript
- *
- * This script handles the popup UI logic and user interactions.
- * The popup has its own JavaScript context, separate from content scripts and background.
- *
- * POPUP LIFECYCLE:
- * - Opens when user clicks extension icon
- * - Closes when user clicks outside or switches tabs
- * - State is not preserved between opens (reload each time)
- *
- * COMMUNICATION:
- * - Use chrome.runtime.sendMessage() to communicate with background script
- * - Use chrome.tabs.sendMessage() to communicate with content scripts
- * - Use chrome.storage to persist data between popup sessions
- *
- * TIPS:
- * - Keep popup loading fast (minimize external requests)
- * - Cache data when possible
- * - Show loading states for async operations
- * - Handle errors gracefully (network, permissions, etc.)
+ * Popup Logic for Save Image Tabs
  */
 
 // ============================================================================
@@ -41,10 +22,6 @@ const state = {
 // DOM ELEMENTS
 // ============================================================================
 
-/**
- * Cache DOM element references for better performance
- * Always check if elements exist before using them
- */
 const elements = {
   imageCount: document.getElementById('imageCount'),
   tabsList: document.getElementById('tabsList'),
@@ -61,10 +38,6 @@ const elements = {
 // INITIALIZATION
 // ============================================================================
 
-/**
- * Initialize the popup when the DOM is loaded
- * This is the entry point for the popup script
- */
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('Popup loaded');
 
@@ -88,10 +61,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 // DATA LOADING
 // ============================================================================
 
-/**
- * Load user settings from storage
- * Settings are stored in chrome.storage.sync and synced across devices
- */
 async function loadSettings() {
   try {
     const response = await sendMessageToBackground({ action: 'getSettings' });
@@ -166,9 +135,6 @@ async function loadImageTabs() {
 // EVENT LISTENERS
 // ============================================================================
 
-/**
- * Set up all event listeners for user interactions
- */
 function setupEventListeners() {
   // Listen for progress updates from background
   chrome.runtime.onMessage.addListener((message) => {

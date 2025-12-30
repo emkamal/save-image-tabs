@@ -1,19 +1,6 @@
 /**
- * Background Service Worker
- *
- * This is the background script for the Chrome extension. In Manifest V3,
- * background scripts run as service workers, which means they:
- * - Only run when needed (event-driven)
- * - Terminate when idle
- * - Don't have access to DOM
- * - Can't use window, document, or localStorage
- *
- * Use this script for:
- * - Listening to browser events (tabs, windows, downloads, etc.)
- * - Managing extension state
- * - Communicating with content scripts and popup
- * - Making API calls
- * - Handling keyboard shortcuts (commands)
+ * Background Service Worker for Save Image Tabs
+ * Handles browser events, downloads, and context menus.
  */
 
 // ============================================================================
@@ -28,8 +15,7 @@ const sessionState = {
 };
 
 /**
- * Fired when the extension is first installed, updated, or Chrome is updated
- * Use this to initialize extension state, set default values, or run migrations
+ * Initialize extension state on install or update
  */
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('Extension installed or updated:', details);
@@ -77,10 +63,6 @@ chrome.runtime.onInstalled.addListener((details) => {
   });
 });
 
-/**
- * Fired when the service worker starts up
- * Note: Service workers may start and stop frequently
- */
 chrome.runtime.onStartup.addListener(() => {
   console.log('Browser started, service worker initialized');
 });
@@ -90,13 +72,7 @@ chrome.runtime.onStartup.addListener(() => {
 // ============================================================================
 
 /**
- * Listen for messages from content scripts, popup, or other parts of the extension
- * This is the primary way different parts of your extension communicate
- *
- * @param {Object} message - The message object sent from another part of the extension
- * @param {Object} sender - Information about the sender (tab, frame, extension)
- * @param {Function} sendResponse - Function to call to send a response back
- * @returns {boolean} - Return true if you want to send a response asynchronously
+ * Message listener for communication between different parts of the extension
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message received:', message, 'from:', sender);
@@ -661,44 +637,5 @@ self.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
 });
 
-// ============================================================================
-// NOTES FOR DEVELOPERS
-// ============================================================================
-
-/**
- * BEST PRACTICES:
- *
- * 1. Keep service workers lightweight - they should start and stop quickly
- * 2. Use chrome.storage instead of localStorage (service workers can't use localStorage)
- * 3. Use message passing to communicate with content scripts and popup
- * 4. Handle errors gracefully - network requests can fail
- * 5. Test with different network conditions and browser states
- * 6. Remember that service workers are terminated when idle
- * 7. Use chrome.alarms for scheduled tasks instead of setTimeout/setInterval
- * 8. All API calls should be async/await or promise-based
- *
- * DEBUGGING:
- *
- * 1. Open chrome://extensions/
- * 2. Enable "Developer mode"
- * 3. Click "service worker" link under your extension to open DevTools
- * 4. Console logs will appear in the service worker DevTools
- * 5. Service worker will show as "inactive" when not running
- *
- * COMMON APIS:
- *
- * - chrome.tabs: Manage browser tabs
- * - chrome.windows: Manage browser windows
- * - chrome.storage: Store and retrieve data
- * - chrome.downloads: Download files
- * - chrome.notifications: Show system notifications
- * - chrome.contextMenus: Add context menu items
- * - chrome.commands: Handle keyboard shortcuts
- * - chrome.alarms: Schedule tasks
- * - chrome.webRequest: Intercept network requests (requires additional permissions)
- * - chrome.cookies: Read and modify cookies
- * - chrome.bookmarks: Access bookmarks
- * - chrome.history: Access browsing history
- */
 
 console.log('Background service worker loaded successfully');
