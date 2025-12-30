@@ -106,25 +106,25 @@
 
         <div class="setting-item">
           <div class="setting-info">
-            <label for="maxConcurrent" class="setting-label">Max Concurrent Downloads</label>
+            <label for="minImageSize" class="setting-label">Minimum Image Size (px)</label>
             <p class="setting-description">
-              Maximum number of simultaneous downloads (1-10)
+              Skip images smaller than this dimension in Extractor Mode (default: 500)
             </p>
           </div>
           <div class="setting-control">
-            <input type="number" id="maxConcurrent" class="number-input" min="1" max="10" value="3">
+            <input type="number" id="minImageSize" class="number-input" min="0" max="5000" value="500">
           </div>
         </div>
 
         <div class="setting-item">
           <div class="setting-info">
-            <label for="maxTabsToOpen" class="setting-label">Max Tabs to Open</label>
+            <label for="maxConcurrent" class="setting-label">Concurrent Download Limit</label>
             <p class="setting-description">
-              Maximum images to open in new tabs from context menu (1-100)
+              Throttle downloads to avoid browser lag or server blocks (1-20)
             </p>
           </div>
           <div class="setting-control">
-            <input type="number" id="maxTabsToOpen" class="number-input" min="1" max="100" value="30">
+            <input type="number" id="maxConcurrent" class="number-input" min="1" max="20" value="5">
           </div>
         </div>
 

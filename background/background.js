@@ -41,7 +41,9 @@ chrome.runtime.onInstalled.addListener((details) => {
       downloadFormat: 'original',
       saveLocation: 'downloads',
       notification: true,
-      maxTabsToOpen: 30
+      maxConcurrent: 5,
+      maxTabsToOpen: 30,
+      minImageSize: 500
     }, () => {
       console.log('Default settings initialized');
     });
@@ -58,7 +60,19 @@ chrome.runtime.onInstalled.addListener((details) => {
   // Create context menu
   chrome.contextMenus.create({
     id: 'openImagesBelow',
-    title: 'Open all images below in new tabs',
+    title: 'Open images below in tabs',
+    contexts: ['page']
+  });
+
+  chrome.contextMenus.create({
+    id: 'downloadImagesBelow',
+    title: 'Download images below...',
+    contexts: ['page']
+  });
+
+  chrome.contextMenus.create({
+    id: 'reviewImagesBelow',
+    title: 'Review and download images...',
     contexts: ['page']
   });
 });
@@ -103,6 +117,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'openTabs':
       handleOpenTabs(message.urls);
+      return true;
+
+    case 'saveExtractedImages':
+      handleSaveExtractedImages(message.images, message.folderName, sendResponse);
       return true;
 
     default:
@@ -192,15 +210,38 @@ chrome.commands.onCommand.addListener((command) => {
 // });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  const settings = await chrome.storage.sync.get({
+    maxTabsToOpen: 30,
+    minImageSize: 500
+  });
+
   if (info.menuItemId === 'openImagesBelow') {
     try {
-      const settings = await chrome.storage.sync.get({ maxTabsToOpen: 30 });
       await chrome.tabs.sendMessage(tab.id, {
         action: 'openImagesBelow',
-        limit: settings.maxTabsToOpen
+        limit: settings.maxTabsToOpen,
+        minSize: settings.minImageSize
       });
     } catch (error) {
       console.log('Context menu message failed (likely page needs refresh):', error.message);
+    }
+  } else if (info.menuItemId === 'downloadImagesBelow') {
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'downloadImagesBelow',
+        minSize: settings.minImageSize
+      });
+    } catch (error) {
+      console.log('Context menu message failed:', error.message);
+    }
+  } else if (info.menuItemId === 'reviewImagesBelow') {
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'reviewImagesBelow',
+        minSize: settings.minImageSize
+      });
+    } catch (error) {
+      console.log('Context menu message failed:', error.message);
     }
   }
 });
@@ -344,6 +385,107 @@ function handleOpenTabs(urls) {
 }
 
 /**
+ * Save extracted images with throttling
+ */
+async function handleSaveExtractedImages(images, folderName, callback) {
+  try {
+    const settings = await chrome.storage.sync.get({ maxConcurrent: 5, notification: true });
+    const maxConcurrent = settings.maxConcurrent;
+
+    // Get currently open image tabs to avoid duplicates
+    const openTabs = await chrome.tabs.query({});
+    const openTabUrls = new Set(openTabs.map(t => t.url).filter(url => !!url));
+
+    // Deduplicate images by URL AND filter out already open tabs
+    const imagesToDownload = [];
+    const seenUrls = new Set();
+
+    for (const img of images) {
+      if (!img.url || seenUrls.has(img.url) || openTabUrls.has(img.url)) {
+        continue;
+      }
+      seenUrls.add(img.url);
+      imagesToDownload.push(img);
+    }
+
+    if (imagesToDownload.length === 0) {
+      callback({ success: true, count: 0, message: 'All images are already open in tabs or are duplicates.' });
+      return;
+    }
+
+    // Process folder name
+    let finalFolderName = folderName.trim();
+    if (!finalFolderName) finalFolderName = getTimestampFolder();
+
+    // Check session naming
+    if (sessionState.folderUsage[finalFolderName]) {
+      sessionState.folderUsage[finalFolderName]++;
+      finalFolderName = `${finalFolderName}${sessionState.folderUsage[finalFolderName]}`;
+    } else {
+      sessionState.folderUsage[finalFolderName] = 0;
+    }
+
+    const downloadIds = [];
+    const total = imagesToDownload.length;
+    let completed = 0;
+
+    // Throttle downloads
+    const downloadQueue = [...imagesToDownload];
+    const runBatch = async () => {
+      const batch = downloadQueue.splice(0, maxConcurrent);
+      if (batch.length === 0) return;
+
+      await Promise.all(batch.map(async (img, index) => {
+        try {
+          const filename = img.filename || `image${completed + 1}.jpg`;
+          const fullPath = `${finalFolderName}/${filename}`;
+
+          const downloadId = await chrome.downloads.download({
+            url: img.url,
+            saveAs: false,
+            filename: fullPath,
+            conflictAction: 'uniquify'
+          });
+
+          downloadIds.push(downloadId);
+          completed++;
+
+          // Notify progress
+          chrome.runtime.sendMessage({
+            action: 'downloadProgress',
+            current: completed,
+            total: total
+          }).catch(() => { });
+
+        } catch (err) {
+          console.error('Inner download error:', err);
+          completed++; // Still increment to keep progress moving
+        }
+      }));
+
+      // Start next batch
+      await runBatch();
+    };
+
+    await runBatch();
+
+    if (settings.notification && downloadIds.length > 0) {
+      chrome.notifications?.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'Extractor Finished',
+        message: `Saved ${downloadIds.length} images to ${finalFolderName}`
+      });
+    }
+
+    callback({ success: true, count: downloadIds.length });
+  } catch (error) {
+    console.error('Error in handleSaveExtractedImages:', error);
+    callback({ success: false, error: error.message });
+  }
+}
+
+/**
  * Generate a timestamp string in YYYYMMDD_HHMMSS format
  * @returns {string}
  */
@@ -410,9 +552,14 @@ async function handleSaveAllImagesCommand() {
     return;
   }
 
-  // Extract URLs and save them
-  const urls = imageTabs.map(tab => tab.url);
-  handleSaveImages(urls, (response) => {
+  // Extract tabs and save them
+  const tabsToSave = imageTabs.map(tab => ({
+    id: tab.id,
+    url: tab.url,
+    title: tab.title
+  }));
+
+  handleSaveImages(tabsToSave, '', false, (response) => {
     console.log('Save all images result:', response);
   });
 }

@@ -317,7 +317,17 @@ function setupMessageListeners() {
         return true;
 
       case 'openImagesBelow':
-        handleOpenImagesBelow(message.limit);
+        handleOpenImagesBelow(message.limit, message.minSize);
+        sendResponse({ success: true });
+        return true;
+
+      case 'downloadImagesBelow':
+        handleDownloadImagesBelow(message.minSize);
+        sendResponse({ success: true });
+        return true;
+
+      case 'reviewImagesBelow':
+        handleReviewImagesBelow(message.minSize);
         sendResponse({ success: true });
         return true;
 
@@ -589,28 +599,13 @@ console.log('Content script initialization complete');
 /**
  * Handle message to open all images below the right-click position
  * @param {number} limit - Max tabs to open
+ * @param {number} minSize - Min image dimension
  */
-async function handleOpenImagesBelow(limit) {
-  console.log('Opening images below Y:', lastRightClickY, 'Limit:', limit);
-
-  // Find all images in the document
-  const images = Array.from(document.querySelectorAll('img'));
-
-  // Filter for images below the right-click position and with valid sources
-  const imagesBelow = images
-    .filter(img => {
-      const rect = img.getBoundingClientRect();
-      const absoluteTop = rect.top + window.scrollY;
-      return absoluteTop >= lastRightClickY && img.src && !img.src.startsWith('data:image/svg'); // Filter out tiny icons/SVGs if needed
-    })
-    .sort((a, b) => {
-      const rectA = a.getBoundingClientRect();
-      const rectB = b.getBoundingClientRect();
-      return (rectA.top + window.scrollY) - (rectB.top + window.scrollY);
-    });
+async function handleOpenImagesBelow(limit, minSize = 0) {
+  const imagesBelow = extractImagesBelow(minSize);
 
   if (imagesBelow.length === 0) {
-    console.log('No images found below the cursor.');
+    alert('No images matching your size criteria were found below the cursor.');
     return;
   }
 
@@ -622,10 +617,133 @@ async function handleOpenImagesBelow(limit) {
   chrome.runtime.sendMessage({ action: 'openTabs', urls });
 
   // Highlight the last image
-  const lastImage = toOpen[toOpen.length - 1];
-  if (lastImage) {
-    highlightLastImage(lastImage);
+  highlightLastImage(toOpen[toOpen.length - 1]);
+}
+
+/**
+ * Handle immediate download of images below cursor
+ */
+async function handleDownloadImagesBelow(minSize) {
+  const images = extractImagesBelow(minSize);
+  if (images.length === 0) {
+    alert('No images found matching your size criteria.');
+    return;
   }
+
+  const folderName = prompt('Enter a folder name for these images (optional):', '');
+  if (folderName === null) return; // User cancelled
+
+  const imageData = images.map((img, i) => ({
+    url: img.src,
+    filename: `extracted_${i + 1}.jpg`
+  }));
+
+  chrome.runtime.sendMessage({
+    action: 'saveExtractedImages',
+    images: imageData,
+    folderName: folderName
+  });
+
+  highlightLastImage(images[images.length - 1]);
+}
+
+/**
+ * Handle review of images in popup
+ */
+async function handleReviewImagesBelow(minSize) {
+  const images = extractImagesBelow(minSize);
+  if (images.length === 0) {
+    alert('No images found matching your size criteria.');
+    return;
+  }
+
+  const imageData = images.map((img, i) => ({
+    url: img.src,
+    title: img.title || img.alt || `Extracted Image ${i + 1}`,
+    id: `extracted-${Date.now()}-${i}`
+  }));
+
+  // Save to local storage for popup to pick up
+  await chrome.storage.local.set({
+    extractedImages: imageData,
+    extractorSourceUrl: window.location.href
+  });
+
+  // Open the extension popup
+  // Note: Extensions cannot programmatically open the popup easily,
+  // but we can ask the user to click it or find another way.
+  // Actually, Chrome doesn't allow opening popups from content scripts.
+  // We'll show a small notification bubble instead.
+
+  showReviewReadyBubble(imageData.length);
+  highlightLastImage(images[images.length - 1]);
+}
+
+/**
+ * Helper to find and filter images relative to cursor
+ */
+function extractImagesBelow(minSize) {
+  const allImages = Array.from(document.querySelectorAll('img'));
+  const seenUrls = new Set();
+
+  return allImages
+    .filter(img => {
+      // Coordinate check
+      const rect = img.getBoundingClientRect();
+      const absoluteTop = rect.top + window.scrollY;
+      if (absoluteTop < lastRightClickY) return false;
+
+      // URL check
+      if (!img.src || img.src.startsWith('data:image/svg')) return false;
+      if (seenUrls.has(img.src)) return false;
+
+      // Size check (use natural size if available, otherwise client size)
+      const width = img.naturalWidth || img.clientWidth;
+      const height = img.naturalHeight || img.clientHeight;
+      if (width < minSize && height < minSize) return false;
+
+      seenUrls.add(img.src);
+      return true;
+    })
+    .sort((a, b) => {
+      const rectA = a.getBoundingClientRect();
+      const rectB = b.getBoundingClientRect();
+      return (rectA.top + window.scrollY) - (rectB.top + window.scrollY);
+    });
+}
+
+/**
+ * Show a small UI bubble when images are ready for review
+ */
+function showReviewReadyBubble(count) {
+  const bubble = document.createElement('div');
+  bubble.id = 'extractor-review-bubble';
+  bubble.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 5px;">Ready for Review!</div>
+    <div style="font-size: 13px;">${count} images extracted. Click the extension icon to review and save.</div>
+    <button id="close-extractor-bubble" style="margin-top: 8px; cursor: pointer; background: white; border: 1px solid #ccc; border-radius: 3px; padding: 2px 8px;">Got it</button>
+  `;
+
+  Object.assign(bubble.style, {
+    position: 'fixed',
+    top: '20px',
+    right: '20px',
+    backgroundColor: '#4285f4',
+    color: 'white',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+    zIndex: '2147483647',
+    fontFamily: 'sans-serif',
+    maxWidth: '250px'
+  });
+
+  document.body.appendChild(bubble);
+  bubble.querySelector('#close-extractor-bubble').onclick = () => bubble.remove();
+
+  setTimeout(() => {
+    if (bubble.parentNode) bubble.remove();
+  }, 10000);
 }
 
 /**

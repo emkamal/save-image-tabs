@@ -33,7 +33,8 @@ const state = {
   imageTabs: [],
   selectedTabIds: new Set(),
   settings: {},
-  loading: true
+  loading: true,
+  isReviewMode: false
 };
 
 // ============================================================================
@@ -112,24 +113,46 @@ async function loadImageTabs() {
   try {
     state.loading = true;
 
-    // Request image tabs from background script
-    const response = await sendMessageToBackground({ action: 'getImageTabs' });
+    // Check for extracted images first
+    const localData = await chrome.storage.local.get(['extractedImages', 'extractorSourceUrl']);
 
-    if (response.success) {
-      state.imageTabs = response.tabs;
-      console.log('Image tabs loaded:', state.imageTabs.length);
+    if (localData.extractedImages && localData.extractedImages.length > 0) {
+      state.isReviewMode = true;
+      state.imageTabs = localData.extractedImages;
+      console.log('Review mode: loaded extracted images:', state.imageTabs.length);
 
-      // Initialize selection: select all by default
-      state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
-      if (elements.selectAll) elements.selectAll.checked = true;
+      // Update UI for Review Mode
+      const headerTitle = document.querySelector('h2');
+      if (headerTitle) headerTitle.childNodes[0].textContent = 'Extracted Images ';
 
-      // Update UI
-      updateImageCount();
-      renderTabsList();
-      updateSaveButton();
+      if (elements.closeTabs) {
+        elements.closeTabs.parentElement.style.display = 'none'; // Not relevant for extracted images
+      }
+
+      if (elements.refreshBtn) {
+        elements.refreshBtn.textContent = 'Cancel Review';
+        elements.refreshBtn.title = 'Clear extracted images and return to tab mode';
+      }
     } else {
-      throw new Error(response.error || 'Failed to load image tabs');
+      state.isReviewMode = false;
+      // Request image tabs from background script
+      const response = await sendMessageToBackground({ action: 'getImageTabs' });
+      if (response.success) {
+        state.imageTabs = response.tabs;
+      } else {
+        throw new Error(response.error || 'Failed to load image tabs');
+      }
     }
+
+    // Initialize selection: select all by default
+    state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+    if (elements.selectAll) elements.selectAll.checked = true;
+
+    // Update UI
+    updateImageCount();
+    renderTabsList();
+    updateSaveButton();
+
   } catch (error) {
     console.error('Error loading image tabs:', error);
     showStatus('Failed to load image tabs', 'error');
@@ -151,8 +174,21 @@ function setupEventListeners() {
   elements.saveAllBtn?.addEventListener('click', handleSaveAll);
 
   // Refresh button
-  elements.refreshBtn?.addEventListener('click', handleRefresh);
-
+  if (elements.refreshBtn) {
+    elements.refreshBtn.addEventListener('click', async () => {
+      if (state.isReviewMode) {
+        await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
+        if (elements.refreshBtn) {
+          elements.refreshBtn.textContent = 'Refresh';
+          elements.refreshBtn.title = 'Manual Refresh';
+        }
+        const headerTitle = document.querySelector('h2');
+        if (headerTitle) headerTitle.childNodes[0].textContent = 'Image Tabs ';
+        if (elements.closeTabs) elements.closeTabs.parentElement.style.display = 'flex';
+      }
+      loadImageTabs();
+    });
+  }
   // Settings link
   elements.settingsLink?.addEventListener('click', handleOpenSettings);
 
@@ -204,35 +240,45 @@ function handleSelectAllToggle(event) {
  * Sends a message to background script to download all images
  */
 async function handleSaveAll() {
-  console.log('Save all clicked');
-
-  if (state.imageTabs.length === 0) {
-    showStatus('No image tabs to save', 'error');
+  if (state.selectedTabIds.size === 0) {
+    showStatus('No items selected', 'error');
     return;
   }
 
+  const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
+  const folderName = elements.folderName?.value.trim() || '';
+  const shouldClose = elements.closeTabs?.checked ?? false;
+
   try {
-    // Extract selected tabs
-    const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
+    // Disable button and show progress
+    updateButtonState('saving', 0, selectedTabs.length);
 
-    if (selectedTabs.length === 0) {
-      showStatus('No items selected', 'error');
-      return;
+    let response;
+    if (state.isReviewMode) {
+      // Send selected extracted images to background
+      const imagesToSave = selectedTabs.map(tab => ({
+        url: tab.url,
+        title: tab.title
+      }));
+      response = await sendMessageToBackground({
+        action: 'saveExtractedImages',
+        images: imagesToSave,
+        folderName: folderName
+      });
+
+      // Cleanup review mode on success
+      if (response.success) {
+        await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
+      }
+    } else {
+      // Normal tab mode
+      response = await sendMessageToBackground({
+        action: 'saveImages',
+        tabs: selectedTabs,
+        folderName: folderName,
+        closeTabs: shouldClose
+      });
     }
-
-    // Disable button while saving
-    elements.saveAllBtn.disabled = true;
-    elements.saveAllBtn.classList.add('btn-progress');
-    elements.saveAllBtn.style.setProperty('--progress', '0%');
-    elements.saveAllBtn.textContent = '💾 Starting...';
-
-    // Send message to background script to save images
-    const response = await sendMessageToBackground({
-      action: 'saveImages',
-      tabs: selectedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
-      folderName: elements.folderName?.value || '',
-      closeTabs: elements.closeTabs?.checked || false
-    });
 
     if (response.success) {
       showStatus(`Started downloading ${response.count} image(s)`, 'success');

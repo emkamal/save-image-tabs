@@ -29,8 +29,9 @@ const DEFAULT_SETTINGS = {
   downloadFormat: 'original',
   saveLocation: 'downloads',
   notification: true,
-  maxConcurrent: 3,
+  maxConcurrent: 5,
   maxTabsToOpen: 30,
+  minImageSize: 500,
   fileNaming: '{name}_{date}'
 };
 
@@ -47,6 +48,7 @@ const elements = {
   saveLocation: document.getElementById('saveLocation'),
   notification: document.getElementById('notification'),
   maxConcurrent: document.getElementById('maxConcurrent'),
+  minImageSize: document.getElementById('minImageSize'),
   maxTabsToOpen: document.getElementById('maxTabsToOpen'),
   fileNaming: document.getElementById('fileNaming'),
   saveBtn: document.getElementById('saveBtn'),
@@ -110,6 +112,9 @@ async function loadSettings() {
     if (elements.maxConcurrent) {
       elements.maxConcurrent.value = settings.maxConcurrent;
     }
+    if (elements.minImageSize) {
+      elements.minImageSize.value = settings.minImageSize;
+    }
     if (elements.maxTabsToOpen) {
       elements.maxTabsToOpen.value = settings.maxTabsToOpen;
     }
@@ -135,13 +140,14 @@ async function saveSettings() {
       saveLocation: elements.saveLocation?.value ?? DEFAULT_SETTINGS.saveLocation,
       notification: elements.notification?.checked ?? DEFAULT_SETTINGS.notification,
       maxConcurrent: parseInt(elements.maxConcurrent?.value) ?? DEFAULT_SETTINGS.maxConcurrent,
+      minImageSize: parseInt(elements.minImageSize?.value) ?? DEFAULT_SETTINGS.minImageSize,
       maxTabsToOpen: parseInt(elements.maxTabsToOpen?.value) ?? DEFAULT_SETTINGS.maxTabsToOpen,
       fileNaming: elements.fileNaming?.value ?? DEFAULT_SETTINGS.fileNaming
     };
 
     // Validate settings
-    if (settings.maxConcurrent < 1 || settings.maxConcurrent > 10) {
-      throw new Error('Max concurrent downloads must be between 1 and 10');
+    if (settings.maxConcurrent < 1 || settings.maxConcurrent > 20) {
+      throw new Error('Max concurrent downloads must be between 1 and 20');
     }
 
     // Save to chrome.storage.sync
