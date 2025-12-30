@@ -193,11 +193,15 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'openImagesBelow') {
-    const settings = await chrome.storage.sync.get({ maxTabsToOpen: 30 });
-    chrome.tabs.sendMessage(tab.id, {
-      action: 'openImagesBelow',
-      limit: settings.maxTabsToOpen
-    });
+    try {
+      const settings = await chrome.storage.sync.get({ maxTabsToOpen: 30 });
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'openImagesBelow',
+        limit: settings.maxTabsToOpen
+      });
+    } catch (error) {
+      console.log('Context menu message failed (likely page needs refresh):', error.message);
+    }
   }
 });
 

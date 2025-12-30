@@ -33,7 +33,6 @@ let lastRightClickY = 0;
 // Listen for right-click to store coordinates
 document.addEventListener('contextmenu', (e) => {
   lastRightClickY = e.pageY;
-  console.log('Last right-click Y stored:', lastRightClickY);
 });
 
 // ============================================================================
@@ -318,7 +317,6 @@ function setupMessageListeners() {
         return true;
 
       case 'openImagesBelow':
-        console.log('Received openImagesBelow request');
         handleOpenImagesBelow(message.limit);
         sendResponse({ success: true });
         return true;
@@ -603,9 +601,7 @@ async function handleOpenImagesBelow(limit) {
     .filter(img => {
       const rect = img.getBoundingClientRect();
       const absoluteTop = rect.top + window.scrollY;
-      const isBelow = absoluteTop >= lastRightClickY;
-      console.log('Checking image:', img.src, 'at Y:', absoluteTop, 'isBelow:', isBelow);
-      return isBelow && img.src && !img.src.startsWith('data:image/svg'); // Filter out tiny icons/SVGs if needed
+      return absoluteTop >= lastRightClickY && img.src && !img.src.startsWith('data:image/svg'); // Filter out tiny icons/SVGs if needed
     })
     .sort((a, b) => {
       const rectA = a.getBoundingClientRect();
