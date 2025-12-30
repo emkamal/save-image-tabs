@@ -162,24 +162,22 @@ chrome.commands.onCommand.addListener((command) => {
  * Create context menu items when the extension is installed
  * Uncomment the "contextMenus" permission in manifest.json to use this
  */
-/*
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'saveImage',
-    title: 'Save this image tab',
-    contexts: ['page'],
-    documentUrlPatterns: ['*://*/*.jpg', ' *://*/*.jpeg', '*://*/*.png', '*://*/*.gif', '*://*/*.webp']
-  });
-});
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'saveImage') {
-    handleSaveImages([{ id: tab.id, url: tab.url, title: tab.title }], '', false, (response) => {
-      console.log('Image saved via context menu:', response);
-    });
-  }
-});
-*/
+// chrome.runtime.onInstalled.addListener(() => {
+//   chrome.contextMenus.create({
+//     id: 'saveImage',
+//     title: 'Save this image tab',
+//     contexts: ['page'],
+//     documentUrlPatterns: ['*://*/*.jpg', '*://*/*.jpeg', '*://*/*.png', '*://*/*.gif', '*://*/*.webp']
+//   });
+// });
+//
+// chrome.contextMenus.onClicked.addListener((info, tab) => {
+//   if (info.menuItemId === 'saveImage') {
+//     handleSaveImages([{ id: tab.id, url: tab.url, title: tab.title }], '', false, (response) => {
+//       console.log('Image saved via context menu:', response);
+//     });
+//   }
+// });
 
 // ============================================================================
 // HELPER FUNCTIONS
