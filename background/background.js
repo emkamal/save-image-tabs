@@ -40,7 +40,8 @@ chrome.runtime.onInstalled.addListener((details) => {
       autoDownload: false,
       downloadFormat: 'original',
       saveLocation: 'downloads',
-      notification: true
+      notification: true,
+      maxTabsToOpen: 30
     }, () => {
       console.log('Default settings initialized');
     });
@@ -53,6 +54,13 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'update') {
     console.log('Extension updated from version:', details.previousVersion);
   }
+
+  // Create context menu
+  chrome.contextMenus.create({
+    id: 'openImagesBelow',
+    title: 'Open all images below in new tabs',
+    contexts: ['page']
+  });
 });
 
 /**
@@ -91,6 +99,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'getSettings':
       handleGetSettings(sendResponse);
+      return true;
+
+    case 'openTabs':
+      handleOpenTabs(message.urls);
       return true;
 
     default:
@@ -178,6 +190,16 @@ chrome.commands.onCommand.addListener((command) => {
 //     });
 //   }
 // });
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'openImagesBelow') {
+    const settings = await chrome.storage.sync.get({ maxTabsToOpen: 30 });
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'openImagesBelow',
+      limit: settings.maxTabsToOpen
+    });
+  }
+});
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -305,6 +327,16 @@ async function handleSaveImages(tabs, folderName, closeTabs, callback) {
     console.error('Error saving images:', error);
     callback({ success: false, error: error.message });
   }
+}
+
+/**
+ * Open multiple URLs in new tabs
+ * @param {Array<string>} urls
+ */
+function handleOpenTabs(urls) {
+  urls.forEach(url => {
+    chrome.tabs.create({ url, active: false });
+  });
 }
 
 /**
