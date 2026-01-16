@@ -84,7 +84,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Will respond asynchronously
 
     case 'saveImages':
-      handleSaveImages(message.tabs, message.folderName, message.closeTabs, sendResponse);
+      handleSaveImages(message.tabIds, message.folderName, message.closeTabs, sendResponse);
       return true;
 
     case 'getSettings':
@@ -235,17 +235,12 @@ async function handleGetImageTabs(callback) {
     // Query all tabs in the current window
     const tabs = await chrome.tabs.query({ currentWindow: true });
 
-    // Filter for image tabs
-    const imageTabs = tabs.filter(tab => isImageUrl(tab.url));
+    // Filter for image tabs (keep response light)
+    const imageTabsCount = tabs.filter(tab => isImageUrl(tab.url)).length;
 
     callback({
       success: true,
-      tabs: imageTabs.map(tab => ({
-        id: tab.id,
-        url: tab.url,
-        title: tab.title,
-        favIconUrl: tab.favIconUrl
-      }))
+      count: imageTabsCount
     });
   } catch (error) {
     console.error('Error getting image tabs:', error);
@@ -260,12 +255,12 @@ async function handleGetImageTabs(callback) {
  */
 /**
  * Save multiple images to the downloads folder
- * @param {Array<Object>} tabs - Array of tab objects ({id, url, title})
+ * @param {Array<number>} tabIds - Array of tab IDs
  * @param {string} folderName - Subfolder name
  * @param {boolean} closeTabs - Whether to close tabs after download
  * @param {Function} callback - Function to call with the results
  */
-async function handleSaveImages(tabs, folderName, closeTabs, callback) {
+async function handleSaveImages(tabIds, folderName, closeTabs, callback) {
   try {
     // Get user settings
     const settings = await chrome.storage.sync.get(['autoDownload', 'notification']);
@@ -288,9 +283,13 @@ async function handleSaveImages(tabs, folderName, closeTabs, callback) {
     const successfulTabs = [];
 
     // Download each image
-    for (let i = 0; i < tabs.length; i++) {
-      const tab = tabs[i];
+    for (let i = 0; i < tabIds.length; i++) {
+      const tabId = tabIds[i];
       try {
+        // Fetch tab data by ID to get fresh URL and bypass messaging limit
+        const tab = await chrome.tabs.get(tabId);
+        if (!tab || !isImageUrl(tab.url)) continue;
+
         let filename = getFilenameFromTab(tab);
 
         // If filename is empty, use imageN
@@ -315,7 +314,7 @@ async function handleSaveImages(tabs, folderName, closeTabs, callback) {
         chrome.runtime.sendMessage({
           action: 'downloadProgress',
           current: i + 1,
-          total: tabs.length
+          total: tabIds.length
         }).catch(() => {
           // Ignore error if popup is closed
         });

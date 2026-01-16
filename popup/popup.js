@@ -81,13 +81,24 @@ async function loadSettings() {
 async function loadImageTabs() {
   try {
     state.loading = true;
+    state.imageTabs = [];
+    state.selectedTabIds = new Set();
 
-    // Check for extracted images first
+    // Clear UI and show loading state
+    if (elements.tabsList) {
+      elements.tabsList.innerHTML = '<div class="loading">Scanning tabs...</div>';
+    }
+    updateImageCount();
+    updateSaveButton();
+
+    // Check for extracted images first (Review Mode)
     const localData = await chrome.storage.local.get(['extractedImages', 'extractorSourceUrl']);
 
     if (localData.extractedImages && localData.extractedImages.length > 0) {
       state.isReviewMode = true;
       state.imageTabs = localData.extractedImages;
+      state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+
       console.log('Review mode: loaded extracted images:', state.imageTabs.length);
 
       // Update UI for Review Mode
@@ -95,32 +106,67 @@ async function loadImageTabs() {
       if (headerTitle) headerTitle.childNodes[0].textContent = 'Extracted Images ';
 
       if (elements.closeTabs) {
-        elements.closeTabs.parentElement.style.display = 'none'; // Not relevant for extracted images
+        elements.closeTabs.parentElement.style.display = 'none';
       }
 
       if (elements.refreshBtn) {
         elements.refreshBtn.textContent = 'Cancel Review';
         elements.refreshBtn.title = 'Clear extracted images and return to tab mode';
       }
+
+      // Render all at once for review mode as they are already in storage
+      renderTabsList();
+      updateImageCount();
+      updateSaveButton();
     } else {
       state.isReviewMode = false;
-      // Request image tabs from background script
-      const response = await sendMessageToBackground({ action: 'getImageTabs' });
-      if (response.success) {
-        state.imageTabs = response.tabs;
-      } else {
-        throw new Error(response.error || 'Failed to load image tabs');
+
+      // Normal mode: Query tabs and filter progressively
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+
+      if (elements.tabsList) elements.tabsList.innerHTML = '';
+
+      // Batch updates to avoid overwhelming the UI thread
+      let batchCount = 0;
+      const BATCH_SIZE = 10;
+
+      for (const tab of tabs) {
+        if (isImageUrl(tab.url)) {
+          const tabData = {
+            id: tab.id,
+            url: tab.url,
+            title: tab.title,
+            favIconUrl: tab.favIconUrl
+          };
+
+          state.imageTabs.push(tabData);
+          state.selectedTabIds.add(tab.id);
+
+          // Append to UI immediately
+          const tabItem = createTabItem(tabData);
+          elements.tabsList.appendChild(tabItem);
+
+          batchCount++;
+          if (batchCount >= BATCH_SIZE) {
+            updateImageCount();
+            updateSaveButton();
+            batchCount = 0;
+            // Yield to UI thread
+            await new Promise(resolve => requestAnimationFrame(resolve));
+          }
+        }
+      }
+
+      // Final UI updates
+      updateImageCount();
+      updateSaveButton();
+
+      if (state.imageTabs.length === 0) {
+        renderEmptyState();
       }
     }
 
-    // Initialize selection: select all by default
-    state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
     if (elements.selectAll) elements.selectAll.checked = true;
-
-    // Update UI
-    updateImageCount();
-    renderTabsList();
-    updateSaveButton();
 
   } catch (error) {
     console.error('Error loading image tabs:', error);
@@ -139,7 +185,7 @@ function setupEventListeners() {
   // Listen for progress updates from background
   chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'downloadProgress') {
-      updateButtonState('saving', message.current, message.total);
+      updateProgressUI(message.current, message.total);
     }
   });
 
@@ -244,10 +290,11 @@ async function handleSaveAll() {
         await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
       }
     } else {
-      // Normal tab mode
+      // Normal tab mode - SEND IDS ONLY to avoid messaging limit
+      const selectedTabIds = selectedTabs.map(tab => tab.id);
       response = await sendMessageToBackground({
         action: 'saveImages',
-        tabs: selectedTabs,
+        tabIds: selectedTabIds,
         folderName: folderName,
         closeTabs: shouldClose
       });
@@ -575,6 +622,19 @@ function sendMessageToTab(tabId, message) {
       resolve(response);
     });
   });
+}
+
+/**
+ * Check if a URL is an image
+ * @param {string} url - The URL to check
+ * @returns {boolean} - True if the URL appears to be an image
+ */
+function isImageUrl(url) {
+  if (!url) return false;
+  if (url.startsWith('data:image/')) return true;
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico'];
+  const urlLower = url.toLowerCase().split('?')[0].split('#')[0];
+  return imageExtensions.some(ext => urlLower.endsWith(ext));
 }
 
 /**
