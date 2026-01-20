@@ -19,7 +19,10 @@ const DEFAULT_SETTINGS = {
   maxConcurrent: 5,
   maxTabsToOpen: 30,
   minImageSize: 500,
-  fileNaming: '{name}_{date}'
+  fileNaming: '{name}_{date}',
+  // Video settings
+  minVideoSize: 1, // Minimum video size in MB
+  enableVideoDetection: true
 };
 
 // ============================================================================
@@ -42,6 +45,9 @@ const elements = {
   resetBtn: document.getElementById('resetBtn'),
   exportBtn: document.getElementById('exportBtn'),
   importBtn: document.getElementById('importBtn'),
+  closeTabs: document.getElementById('closeTabs'),
+  enableVideoDetection: document.getElementById('enableVideoDetection'),
+  minVideoSize: document.getElementById('minVideoSize'),
   importFile: document.getElementById('importFile'),
   statusMessage: document.getElementById('statusMessage')
 };
@@ -108,6 +114,12 @@ async function loadSettings() {
     if (elements.fileNaming) {
       elements.fileNaming.value = settings.fileNaming;
     }
+    if (elements.enableVideoDetection) {
+      elements.enableVideoDetection.checked = settings.enableVideoDetection;
+    }
+    if (elements.minVideoSize) {
+      elements.minVideoSize.value = settings.minVideoSize;
+    }
 
   } catch (error) {
     console.error('Error loading settings:', error);
@@ -129,7 +141,9 @@ async function saveSettings() {
       maxConcurrent: parseInt(elements.maxConcurrent?.value) ?? DEFAULT_SETTINGS.maxConcurrent,
       minImageSize: parseInt(elements.minImageSize?.value) ?? DEFAULT_SETTINGS.minImageSize,
       maxTabsToOpen: parseInt(elements.maxTabsToOpen?.value) ?? DEFAULT_SETTINGS.maxTabsToOpen,
-      fileNaming: elements.fileNaming?.value ?? DEFAULT_SETTINGS.fileNaming
+      fileNaming: elements.fileNaming?.value ?? DEFAULT_SETTINGS.fileNaming,
+      enableVideoDetection: elements.enableVideoDetection?.checked ?? DEFAULT_SETTINGS.enableVideoDetection,
+      minVideoSize: parseFloat(elements.minVideoSize?.value) ?? DEFAULT_SETTINGS.minVideoSize
     };
 
     // Validate settings

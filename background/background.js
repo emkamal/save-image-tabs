@@ -14,6 +14,68 @@ const sessionState = {
   folderUsage: {}
 };
 
+// ============================================================================
+// VIDEO INTERCEPTOR STATE
+// ============================================================================
+
+/**
+ * Video interception state
+ * - pendingRequests: Temporarily stores headers for in-flight requests (keyed by requestId)
+ * - detectedVideos: Videos detected per tab (keyed by tabId -> Map of url -> metadata)
+ */
+const videoState = {
+  pendingRequests: new Map(),
+  detectedVideos: new Map()
+};
+
+/**
+ * Video file extensions to detect
+ */
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v', '.ogv'];
+
+/**
+ * Streaming formats to ignore (HLS/DASH)
+ */
+const STREAMING_EXTENSIONS = ['.m3u8', '.mpd', '.ts'];
+
+/**
+ * Check if URL is a video based on extension
+ */
+function isVideoUrl(url) {
+  if (!url) return false;
+  const urlLower = url.toLowerCase().split('?')[0].split('#')[0];
+  // Ignore streaming formats
+  if (STREAMING_EXTENSIONS.some(ext => urlLower.endsWith(ext))) return false;
+  return VIDEO_EXTENSIONS.some(ext => urlLower.endsWith(ext));
+}
+
+/**
+ * Check if content-type indicates video
+ */
+function isVideoContentType(contentType) {
+  if (!contentType) return false;
+  return contentType.toLowerCase().startsWith('video/');
+}
+
+/**
+ * Extract filename from URL
+ */
+function getVideoFilename(url) {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    let filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+    // Ensure it has an extension
+    if (!VIDEO_EXTENSIONS.some(ext => filename.toLowerCase().endsWith(ext))) {
+      filename = filename || 'video';
+      filename += '.mp4'; // Default extension
+    }
+    return filename;
+  } catch {
+    return 'video.mp4';
+  }
+}
+
 /**
  * Initialize extension state on install or update
  */
@@ -29,7 +91,10 @@ chrome.runtime.onInstalled.addListener((details) => {
       notification: true,
       maxConcurrent: 5,
       maxTabsToOpen: 30,
-      minImageSize: 500
+      minImageSize: 500,
+      // Video settings
+      minVideoSize: 1, // Minimum video size in MB
+      enableVideoDetection: true
     }, () => {
       console.log('Default settings initialized');
     });
@@ -63,8 +128,182 @@ chrome.runtime.onInstalled.addListener((details) => {
   });
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   console.log('Browser started, service worker initialized');
+  // Restore video state from session storage
+  await restoreVideoState();
+});
+
+// ============================================================================
+// VIDEO NETWORK INTERCEPTION
+// ============================================================================
+
+/**
+ * Restore video state from session storage (for service worker resilience)
+ */
+async function restoreVideoState() {
+  try {
+    const data = await chrome.storage.session.get('detectedVideos');
+    if (data.detectedVideos) {
+      // Reconstruct Map from stored object
+      for (const [tabId, videos] of Object.entries(data.detectedVideos)) {
+        videoState.detectedVideos.set(parseInt(tabId), new Map(Object.entries(videos)));
+      }
+      console.log('Restored video state:', videoState.detectedVideos.size, 'tabs');
+    }
+  } catch (error) {
+    console.error('Error restoring video state:', error);
+  }
+}
+
+/**
+ * Persist video state to session storage
+ */
+async function persistVideoState() {
+  try {
+    // Convert Maps to plain objects for storage
+    const serializable = {};
+    for (const [tabId, videos] of videoState.detectedVideos) {
+      serializable[tabId] = Object.fromEntries(videos);
+    }
+    await chrome.storage.session.set({ detectedVideos: serializable });
+  } catch (error) {
+    console.error('Error persisting video state:', error);
+  }
+}
+
+/**
+ * Capture request headers before they are sent
+ * We need these to replay the request later for download
+ */
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    // Store headers temporarily keyed by requestId
+    const headers = {};
+    if (details.requestHeaders) {
+      for (const header of details.requestHeaders) {
+        // Capture important headers for replay
+        const name = header.name.toLowerCase();
+        if (['referer', 'cookie', 'origin', 'user-agent', 'authorization'].includes(name)) {
+          headers[header.name] = header.value;
+        }
+      }
+    }
+    if (Object.keys(headers).length > 0) {
+      videoState.pendingRequests.set(details.requestId, {
+        headers,
+        tabId: details.tabId,
+        url: details.url
+      });
+    }
+  },
+  { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other'] },
+  ['requestHeaders']
+);
+
+/**
+ * Detect video responses when requests complete
+ */
+chrome.webRequest.onCompleted.addListener(
+  async (details) => {
+    // Skip if not from a valid tab
+    if (details.tabId < 0) return;
+
+    // Get response headers
+    const responseHeaders = {};
+    let contentType = '';
+    let contentLength = 0;
+
+    if (details.responseHeaders) {
+      for (const header of details.responseHeaders) {
+        const name = header.name.toLowerCase();
+        responseHeaders[name] = header.value;
+        if (name === 'content-type') contentType = header.value;
+        if (name === 'content-length') contentLength = parseInt(header.value) || 0;
+      }
+    }
+
+    // Check if this is a video
+    const isVideo = isVideoContentType(contentType) || isVideoUrl(details.url);
+    if (!isVideo) {
+      // Cleanup pending request
+      videoState.pendingRequests.delete(details.requestId);
+      return;
+    }
+
+    // Get settings for minimum video size
+    const settings = await chrome.storage.sync.get({ minVideoSize: 1 }); // Default 1 MB
+    const minBytes = settings.minVideoSize * 1024 * 1024;
+
+    // Skip if too small (and we know the size)
+    if (contentLength > 0 && contentLength < minBytes) {
+      videoState.pendingRequests.delete(details.requestId);
+      return;
+    }
+
+    // Get the captured request headers
+    const pendingRequest = videoState.pendingRequests.get(details.requestId);
+    videoState.pendingRequests.delete(details.requestId);
+
+    // Create video metadata
+    const videoMetadata = {
+      url: details.url,
+      filename: getVideoFilename(details.url),
+      contentType,
+      contentLength,
+      requestHeaders: pendingRequest?.headers || {},
+      detectedAt: Date.now()
+    };
+
+    // Store in detectedVideos map
+    if (!videoState.detectedVideos.has(details.tabId)) {
+      videoState.detectedVideos.set(details.tabId, new Map());
+    }
+
+    const tabVideos = videoState.detectedVideos.get(details.tabId);
+    // Use URL as key to avoid duplicates
+    if (!tabVideos.has(details.url)) {
+      tabVideos.set(details.url, videoMetadata);
+      console.log('Video detected:', details.url, 'Tab:', details.tabId);
+
+      // Persist state
+      await persistVideoState();
+
+      // Notify any open popups about new video
+      chrome.runtime.sendMessage({
+        action: 'videoDetected',
+        tabId: details.tabId,
+        video: videoMetadata
+      }).catch(() => {
+        // Ignore error if popup is closed
+      });
+    }
+  },
+  { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other'] },
+  ['responseHeaders']
+);
+
+/**
+ * Clean up video state when a tab is closed
+ */
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  if (videoState.detectedVideos.has(tabId)) {
+    videoState.detectedVideos.delete(tabId);
+    await persistVideoState();
+  }
+});
+
+/**
+ * Clean up video state when a tab navigates to a new page
+ */
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (changeInfo.status === 'loading' && changeInfo.url) {
+    // Tab is navigating to a new URL, clear its videos
+    if (videoState.detectedVideos.has(tabId)) {
+      videoState.detectedVideos.delete(tabId);
+      await persistVideoState();
+    }
+  }
 });
 
 // ============================================================================
@@ -97,6 +336,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'saveExtractedImages':
       handleSaveExtractedImages(message.images, message.folderName, sendResponse);
+      return true;
+
+    // Video-related handlers
+    case 'getDetectedVideos':
+      handleGetDetectedVideos(message.tabId, sendResponse);
+      return true;
+
+    case 'saveVideos':
+      handleSaveVideos(message.videos, message.folderName, sendResponse);
+      return true;
+
+    case 'clearVideos':
+      handleClearVideos(message.tabId, sendResponse);
       return true;
 
     default:
@@ -456,6 +708,194 @@ async function handleSaveExtractedImages(images, folderName, callback) {
     callback({ success: true, count: downloadIds.length });
   } catch (error) {
     console.error('Error in handleSaveExtractedImages:', error);
+    callback({ success: false, error: error.message });
+  }
+}
+
+// ============================================================================
+// VIDEO HANDLER FUNCTIONS
+// ============================================================================
+
+/**
+ * Get detected videos for a specific tab
+ * @param {number} tabId - Tab ID to get videos for
+ * @param {Function} callback - Function to call with results
+ */
+async function handleGetDetectedVideos(tabId, callback) {
+  try {
+    // Restore state if needed (service worker may have restarted)
+    if (videoState.detectedVideos.size === 0) {
+      await restoreVideoState();
+    }
+
+    const tabVideos = videoState.detectedVideos.get(tabId);
+    const videos = tabVideos ? Array.from(tabVideos.values()) : [];
+
+    callback({
+      success: true,
+      videos,
+      count: videos.length
+    });
+  } catch (error) {
+    console.error('Error getting detected videos:', error);
+    callback({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Download a single video with header replay
+ * Uses fetch to replay original headers, then saves via blob URL
+ * @param {Object} video - Video metadata
+ * @param {string} folderName - Destination folder
+ * @returns {Object} - Result with success status
+ */
+async function downloadVideoWithHeaders(video, folderName) {
+  try {
+    // Build headers from captured request headers
+    const headers = new Headers();
+    if (video.requestHeaders) {
+      for (const [name, value] of Object.entries(video.requestHeaders)) {
+        try {
+          headers.set(name, value);
+        } catch (e) {
+          // Some headers may not be settable, skip them
+          console.warn('Could not set header:', name);
+        }
+      }
+    }
+
+    // Fetch the video with original headers
+    const response = await fetch(video.url, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+      mode: 'cors'
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    // Get the video as a blob
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Sanitize filename
+    let filename = video.filename || 'video.mp4';
+    filename = filename.replace(/[<>:"/\\|?*]/g, '_');
+
+    const fullPath = `${folderName}/${filename}`;
+
+    // Start download
+    const downloadId = await chrome.downloads.download({
+      url: blobUrl,
+      filename: fullPath,
+      saveAs: false,
+      conflictAction: 'uniquify'
+    });
+
+    // Schedule blob URL cleanup (after download should have started)
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+
+    return { success: true, downloadId, filename };
+  } catch (error) {
+    console.error('Error downloading video:', video.url, error);
+    return { success: false, error: error.message, url: video.url };
+  }
+}
+
+/**
+ * Save multiple videos with throttling
+ * @param {Array} videos - Array of video metadata objects
+ * @param {string} folderName - Destination folder name
+ * @param {Function} callback - Function to call with results
+ */
+async function handleSaveVideos(videos, folderName, callback) {
+  try {
+    const settings = await chrome.storage.sync.get({ maxConcurrent: 3, notification: true });
+    const maxConcurrent = settings.maxConcurrent;
+
+    // Process folder name
+    let finalFolderName = folderName.trim();
+    if (!finalFolderName) {
+      finalFolderName = getTimestampFolder();
+    } else if (sessionState.folderUsage[finalFolderName]) {
+      sessionState.folderUsage[finalFolderName]++;
+      finalFolderName = `${finalFolderName}${sessionState.folderUsage[finalFolderName]}`;
+    } else {
+      sessionState.folderUsage[finalFolderName] = 0;
+    }
+
+    const results = { success: [], failed: [] };
+    const total = videos.length;
+    let completed = 0;
+
+    // Process in batches
+    const queue = [...videos];
+
+    const processBatch = async () => {
+      const batch = queue.splice(0, maxConcurrent);
+      if (batch.length === 0) return;
+
+      await Promise.all(batch.map(async (video) => {
+        const result = await downloadVideoWithHeaders(video, finalFolderName);
+        completed++;
+
+        if (result.success) {
+          results.success.push(result);
+        } else {
+          results.failed.push(result);
+        }
+
+        // Send progress update
+        chrome.runtime.sendMessage({
+          action: 'videoDownloadProgress',
+          current: completed,
+          total
+        }).catch(() => { });
+      }));
+
+      await processBatch();
+    };
+
+    await processBatch();
+
+    // Show notification
+    if (settings.notification && results.success.length > 0) {
+      chrome.notifications?.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'Videos Downloaded',
+        message: `Downloaded ${results.success.length}/${total} videos to ${finalFolderName}`
+      });
+    }
+
+    callback({
+      success: true,
+      downloaded: results.success.length,
+      failed: results.failed.length,
+      failedUrls: results.failed.map(f => f.url)
+    });
+  } catch (error) {
+    console.error('Error in handleSaveVideos:', error);
+    callback({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Clear detected videos for a tab
+ * @param {number} tabId - Tab ID to clear videos for
+ * @param {Function} callback - Function to call with results
+ */
+async function handleClearVideos(tabId, callback) {
+  try {
+    if (videoState.detectedVideos.has(tabId)) {
+      videoState.detectedVideos.delete(tabId);
+      await persistVideoState();
+    }
+    callback({ success: true });
+  } catch (error) {
+    console.error('Error clearing videos:', error);
     callback({ success: false, error: error.message });
   }
 }

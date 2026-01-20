@@ -13,9 +13,13 @@
 const state = {
   imageTabs: [],
   selectedTabIds: new Set(),
+  videos: [],
+  selectedVideoUrls: new Set(),
   settings: {},
   loading: true,
-  isReviewMode: false
+  isReviewMode: false,
+  activeTab: 'images', // 'images' or 'videos'
+  currentTabId: null  // Active browser tab ID
 };
 
 // ============================================================================
@@ -23,15 +27,32 @@ const state = {
 // ============================================================================
 
 const elements = {
-  imageCount: document.getElementById('imageCount'),
-  tabsList: document.getElementById('tabsList'),
+  // Tab navigation
+  imagesTabBtn: document.getElementById('imagesTabBtn'),
+  videosTabBtn: document.getElementById('videosTabBtn'),
+  imageBadge: document.getElementById('imageBadge'),
+  videoBadge: document.getElementById('videoBadge'),
+
+  // Sections
+  imagesSection: document.getElementById('imagesSection'),
+  videosSection: document.getElementById('videosSection'),
+
+  // Lists
+  imagesList: document.getElementById('imagesList'),
+  videosList: document.getElementById('videosList'),
+
+  // Buttons and controls
   saveAllBtn: document.getElementById('saveAllBtn'),
+  saveButtonText: document.getElementById('saveButtonText'),
   refreshBtn: document.getElementById('refreshBtn'),
   settingsLink: document.getElementById('settingsLink'),
   statusMessage: document.getElementById('statusMessage'),
   folderName: document.getElementById('folderName'),
   closeTabs: document.getElementById('closeTabs'),
-  selectAll: document.getElementById('selectAll')
+  closeTabsGroup: document.getElementById('closeTabsGroup'),
+  selectAllImages: document.getElementById('selectAllImages'),
+  selectAllVideos: document.getElementById('selectAllVideos'),
+  videoHelpLink: document.getElementById('videoHelpLink')
 };
 
 // ============================================================================
@@ -42,14 +63,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('Popup loaded');
 
   try {
-    // Load settings and image tabs in parallel
+    // Get current tab ID for video detection
+    const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    state.currentTabId = currentTab?.id || null;
+
+    // Load settings and data in parallel
     await Promise.all([
       loadSettings(),
-      loadImageTabs()
+      loadImageTabs(),
+      loadVideos()
     ]);
 
     // Set up event listeners
     setupEventListeners();
+
+    // Update tab badges
+    updateTabBadges();
 
   } catch (error) {
     console.error('Error initializing popup:', error);
@@ -115,8 +144,8 @@ async function loadImageTabs() {
       }
 
       // Render all at once for review mode as they are already in storage
-      renderTabsList();
-      updateImageCount();
+      renderImagesList();
+      updateTabBadges();
       updateSaveButton();
     } else {
       state.isReviewMode = false;
@@ -124,7 +153,7 @@ async function loadImageTabs() {
       // Normal mode: Query tabs and filter progressively
       const tabs = await chrome.tabs.query({ currentWindow: true });
 
-      if (elements.tabsList) elements.tabsList.innerHTML = '';
+      if (elements.imagesList) elements.imagesList.innerHTML = '';
 
       // Batch updates to avoid overwhelming the UI thread
       let batchCount = 0;
@@ -144,11 +173,11 @@ async function loadImageTabs() {
 
           // Append to UI immediately
           const tabItem = createTabItem(tabData);
-          elements.tabsList.appendChild(tabItem);
+          elements.imagesList.appendChild(tabItem);
 
           batchCount++;
           if (batchCount >= BATCH_SIZE) {
-            updateImageCount();
+            updateTabBadges();
             updateSaveButton();
             batchCount = 0;
             // Yield to UI thread
@@ -158,22 +187,49 @@ async function loadImageTabs() {
       }
 
       // Final UI updates
-      updateImageCount();
+      updateTabBadges();
       updateSaveButton();
 
       if (state.imageTabs.length === 0) {
-        renderEmptyState();
+        renderEmptyState(elements.imagesList, 'No image tabs found');
       }
     }
 
-    if (elements.selectAll) elements.selectAll.checked = true;
+    if (elements.selectAllImages) elements.selectAllImages.checked = true;
 
   } catch (error) {
     console.error('Error loading image tabs:', error);
     showStatus('Failed to load image tabs', 'error');
-    renderEmptyState('Error loading tabs');
+    if (elements.imagesList) {
+      renderEmptyState(elements.imagesList, 'Error loading tabs');
+    }
   } finally {
     state.loading = false;
+  }
+}
+
+/**
+ * Load detected videos for the current tab
+ */
+async function loadVideos() {
+  try {
+    if (!state.currentTabId) {
+      console.log('No current tab ID, skipping video load');
+      return;
+    }
+
+    const response = await sendMessageToBackground({
+      action: 'getDetectedVideos',
+      tabId: state.currentTabId
+    });
+
+    if (response.success && response.videos) {
+      state.videos = response.videos;
+      state.selectedVideoUrls = new Set(state.videos.map(v => v.url));
+      console.log('Loaded videos:', state.videos.length);
+    }
+  } catch (error) {
+    console.error('Error loading videos:', error);
   }
 }
 
@@ -182,14 +238,34 @@ async function loadImageTabs() {
 // ============================================================================
 
 function setupEventListeners() {
+  // Tab navigation
+  elements.imagesTabBtn?.addEventListener('click', () => switchTab('images'));
+  elements.videosTabBtn?.addEventListener('click', () => switchTab('videos'));
+
+  // Video help link
+  elements.videoHelpLink?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showVideoHelp();
+  });
+
   // Listen for progress updates from background
   chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'downloadProgress') {
       updateProgressUI(message.current, message.total);
+    } else if (message.action === 'videoDownloadProgress') {
+      updateProgressUI(message.current, message.total);
+    } else if (message.action === 'videoDetected') {
+      // Reload videos when a new one is detected
+      if (message.tabId === state.currentTabId) {
+        loadVideos().then(() => {
+          renderVideosList();
+          updateTabBadges();
+        });
+      }
     }
   });
 
-  // Save all images button
+  // Save all button
   elements.saveAllBtn?.addEventListener('click', handleSaveAll);
 
   // Refresh button
@@ -197,32 +273,123 @@ function setupEventListeners() {
     elements.refreshBtn.addEventListener('click', async () => {
       if (state.isReviewMode) {
         await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
-        if (elements.refreshBtn) {
-          elements.refreshBtn.textContent = 'Refresh';
-          elements.refreshBtn.title = 'Manual Refresh';
-        }
-        const headerTitle = document.querySelector('h2');
-        if (headerTitle) headerTitle.childNodes[0].textContent = 'Image Tabs ';
-        if (elements.closeTabs) elements.closeTabs.parentElement.style.display = 'flex';
+        state.isReviewMode = false;
+        if (elements.closeTabsGroup) elements.closeTabsGroup.style.display = 'flex';
       }
-      loadImageTabs();
+
+      // Reload based on active tab
+      if (state.activeTab === 'images') {
+        await loadImageTabs();
+      } else {
+        await loadVideos();
+        renderVideosList();
+      }
+      updateTabBadges();
     });
   }
+
   // Settings link
   elements.settingsLink?.addEventListener('click', handleOpenSettings);
 
-  // Select all checkbox
-  elements.selectAll?.addEventListener('change', handleSelectAllToggle);
+  // Select all checkboxes
+  elements.selectAllImages?.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    if (isChecked) {
+      state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+    } else {
+      state.selectedTabIds.clear();
+    }
+    renderImagesList();
+    updateSaveButton();
+  });
+
+  elements.selectAllVideos?.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    if (isChecked) {
+      state.selectedVideoUrls = new Set(state.videos.map(v => v.url));
+    } else {
+      state.selectedVideoUrls.clear();
+    }
+    renderVideosList();
+    updateSaveButton();
+  });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', handleKeyPress);
+}
 
-  // Listen for progress updates from background
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === 'downloadProgress') {
-      updateProgressUI(message.current, message.total);
+/**
+ * Switch between Images and Videos tabs
+ */
+function switchTab(tabName) {
+  state.activeTab = tabName;
+
+  // Update tab buttons
+  elements.imagesTabBtn?.classList.toggle('active', tabName === 'images');
+  elements.videosTabBtn?.classList.toggle('active', tabName === 'videos');
+
+  // Update sections
+  elements.imagesSection?.classList.toggle('hidden', tabName !== 'images');
+  elements.videosSection?.classList.toggle('hidden', tabName !== 'videos');
+
+  // Update save button text
+  if (elements.saveButtonText) {
+    elements.saveButtonText.textContent = tabName === 'images' ? 'Save All Images' : 'Save All Videos';
+  }
+
+  // Update close tabs checkbox visibility (only for images)
+  if (elements.closeTabsGroup) {
+    elements.closeTabsGroup.style.display = tabName === 'images' ? 'flex' : 'none';
+  }
+
+  // Render appropriate list if not already rendered
+  if (tabName === 'images') {
+    if (!elements.imagesList?.children.length || elements.imagesList?.querySelector('.loading')) {
+      renderImagesList();
     }
-  });
+  } else {
+    if (!elements.videosList?.children.length || elements.videosList?.querySelector('.loading')) {
+      renderVideosList();
+    }
+  }
+
+  updateSaveButton();
+}
+
+/**
+ * Update tab badges with counts
+ */
+function updateTabBadges() {
+  if (elements.imageBadge) {
+    const imageCount = state.isReviewMode ? state.imageTabs.length : state.selectedTabIds.size;
+    elements.imageBadge.textContent = imageCount.toString();
+  }
+
+  if (elements.videoBadge) {
+    elements.videoBadge.textContent = state.videos.length.toString();
+  }
+}
+
+/**
+ * Show video help dialog
+ */
+function showVideoHelp() {
+  const help = `Video Detection Help
+
+Videos are automatically detected when they load on a web page.
+
+Supported:
+✓ Direct MP4, WebM, MOV files
+✓ Videos with referer/cookie protection
+
+Not Supported:
+✗ HLS/DASH streaming (.m3u8, .mpd)
+✗ DRM-protected videos (Netflix, etc.)
+✗ YouTube videos (use youtube-dl instead)
+
+Tip: Play a video on the page to trigger detection!`;
+
+  alert(help);
 }
 
 /**
@@ -256,77 +423,124 @@ function handleSelectAllToggle(event) {
 
 /**
  * Handle save all button click
- * Sends a message to background script to download all images
+ * Sends a message to background script to download all images or videos
  */
 async function handleSaveAll() {
-  if (state.selectedTabIds.size === 0) {
-    showStatus('No items selected', 'error');
-    return;
-  }
-
-  const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
   const folderName = elements.folderName?.value.trim() || '';
-  const shouldClose = elements.closeTabs?.checked ?? false;
 
   try {
-    // Disable button and show progress
-    updateButtonState('saving', 0, selectedTabs.length);
+    // Handle based on active tab
+    if (state.activeTab === 'images') {
+      if (state.selectedTabIds.size === 0) {
+        showStatus('No images selected', 'error');
+        return;
+      }
 
-    let response;
-    if (state.isReviewMode) {
-      // Send selected extracted images to background
-      const imagesToSave = selectedTabs.map(tab => ({
-        url: tab.url,
-        title: tab.title
-      }));
-      response = await sendMessageToBackground({
-        action: 'saveExtractedImages',
-        images: imagesToSave,
+      const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
+      const shouldClose = elements.closeTabs?.checked ?? false;
+
+      // Disable button and show progress
+      updateButtonState('saving', 0, selectedTabs.length);
+
+      let response;
+      if (state.isReviewMode) {
+        // Send selected extracted images to background
+        const imagesToSave = selectedTabs.map(tab => ({
+          url: tab.url,
+          title: tab.title
+        }));
+        response = await sendMessageToBackground({
+          action: 'saveExtractedImages',
+          images: imagesToSave,
+          folderName: folderName
+        });
+
+        // Cleanup review mode on success
+        if (response.success) {
+          await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
+        }
+      } else {
+        // Normal tab mode - SEND IDS ONLY to avoid messaging limit
+        const selectedTabIds = selectedTabs.map(tab => tab.id);
+        response = await sendMessageToBackground({
+          action: 'saveImages',
+          tabIds: selectedTabIds,
+          folderName: folderName,
+          closeTabs: shouldClose
+        });
+      }
+
+      if (response.success) {
+        showStatus(`Started downloading ${response.count} image(s)`, 'success');
+        elements.saveAllBtn.textContent = '💾 Done!';
+        elements.saveAllBtn.style.setProperty('--progress', '100%');
+
+        // Close popup after a short delay if all tabs were closed anyway
+        if (elements.closeTabs?.checked) {
+          setTimeout(() => window.close(), 1000);
+        } else {
+          // Reset button after 2 seconds
+          setTimeout(() => {
+            elements.saveAllBtn.classList.remove('btn-progress');
+            elements.saveAllBtn.style.removeProperty('--progress');
+            updateSaveButton();
+            if (elements.saveButtonText) {
+              elements.saveButtonText.textContent = 'Save All Images';
+            }
+            loadImageTabs(); // Update list in case some tabs were manually closed
+          }, 2000);
+        }
+      } else {
+        throw new Error(response.error || 'Failed to save images');
+      }
+    } else {
+      // Videos tab
+      if (state.selectedVideoUrls.size === 0) {
+        showStatus('No videos selected', 'error');
+        return;
+      }
+
+      const selectedVideos = state.videos.filter(v => state.selectedVideoUrls.has(v.url));
+
+      // Disable button and show progress
+      updateButtonState('saving', 0, selectedVideos.length);
+
+      const response = await sendMessageToBackground({
+        action: 'saveVideos',
+        videos: selectedVideos,
         folderName: folderName
       });
 
-      // Cleanup review mode on success
       if (response.success) {
-        await chrome.storage.local.remove(['extractedImages', 'extractorSourceUrl']);
-      }
-    } else {
-      // Normal tab mode - SEND IDS ONLY to avoid messaging limit
-      const selectedTabIds = selectedTabs.map(tab => tab.id);
-      response = await sendMessageToBackground({
-        action: 'saveImages',
-        tabIds: selectedTabIds,
-        folderName: folderName,
-        closeTabs: shouldClose
-      });
-    }
+        const message = response.failed > 0
+          ? `Downloaded ${response.downloaded}/${response.downloaded + response.failed} videos`
+          : `Downloaded ${response.downloaded} video(s)`;
+        showStatus(message, response.failed > 0 ? 'error' : 'success');
 
-    if (response.success) {
-      showStatus(`Started downloading ${response.count} image(s)`, 'success');
-      elements.saveAllBtn.textContent = '💾 Done!';
-      elements.saveAllBtn.style.setProperty('--progress', '100%');
+        elements.saveAllBtn.textContent = '💾 Done!';
+        elements.saveAllBtn.style.setProperty('--progress', '100%');
 
-      // Close popup after a short delay if all tabs were closed anyway
-      if (elements.closeTabs?.checked) {
-        setTimeout(() => window.close(), 1000);
-      } else {
         // Reset button after 2 seconds
         setTimeout(() => {
           elements.saveAllBtn.classList.remove('btn-progress');
           elements.saveAllBtn.style.removeProperty('--progress');
           updateSaveButton();
-          elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
-          handleRefresh(); // Update list in case some tabs were manually closed
+          if (elements.saveButtonText) {
+            elements.saveButtonText.textContent = 'Save All Videos';
+          }
         }, 2000);
+      } else {
+        throw new Error(response.error || 'Failed to save videos');
       }
-    } else {
-      throw new Error(response.error || 'Failed to save images');
     }
   } catch (error) {
-    console.error('Error saving images:', error);
-    showStatus('Failed to save images', 'error');
+    console.error('Error saving:', error);
+    showStatus(`Failed to save ${state.activeTab}`, 'error');
     elements.saveAllBtn.classList.remove('btn-progress');
     elements.saveAllBtn.disabled = false;
-    elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
+    if (elements.saveButtonText) {
+      elements.saveButtonText.textContent = state.activeTab === 'images' ? 'Save All Images' : 'Save All Videos';
+    }
   }
 }
 
@@ -394,46 +608,61 @@ function handleKeyPress(event) {
 // UI RENDERING
 // ============================================================================
 
-/**
- * Update the image count display
- */
-function updateImageCount() {
-  if (elements.imageCount) {
-    const selectedCount = state.selectedTabIds.size;
-    const totalCount = state.imageTabs.length;
-    elements.imageCount.textContent = totalCount > 0 ? `${selectedCount} / ${totalCount}` : '0';
-  }
-}
 
 /**
  * Update the save button state
- * Disable if no images to save
+ * Disable if no items to save based on active tab
  */
 function updateSaveButton() {
   if (elements.saveAllBtn) {
-    elements.saveAllBtn.disabled = state.selectedTabIds.size === 0;
+    const hasSelection = state.activeTab === 'images'
+      ? state.selectedTabIds.size > 0
+      : state.selectedVideoUrls.size > 0;
+    elements.saveAllBtn.disabled = !hasSelection;
   }
 }
 
 /**
  * Render the list of image tabs
  */
-function renderTabsList() {
-  if (!elements.tabsList) return;
+function renderImagesList() {
+  if (!elements.imagesList) return;
 
   // Clear existing content
-  elements.tabsList.innerHTML = '';
+  elements.imagesList.innerHTML = '';
 
   // Show empty state if no tabs
   if (state.imageTabs.length === 0) {
-    renderEmptyState();
+    renderEmptyState(elements.imagesList, 'No image tabs found');
     return;
   }
 
   // Create tab items
   state.imageTabs.forEach(tab => {
     const tabItem = createTabItem(tab);
-    elements.tabsList.appendChild(tabItem);
+    elements.imagesList.appendChild(tabItem);
+  });
+}
+
+/**
+ * Render the list of detected videos
+ */
+function renderVideosList() {
+  if (!elements.videosList) return;
+
+  // Clear existing content
+  elements.videosList.innerHTML = '';
+
+  // Show empty state if no videos
+  if (state.videos.length === 0) {
+    renderEmptyState(elements.videosList, 'No videos detected yet. Play a video on this page to detect it.');
+    return;
+  }
+
+  // Create video items
+  state.videos.forEach(video => {
+    const videoItem = createVideoItem(video);
+    elements.videosList.appendChild(videoItem);
   });
 }
 
@@ -458,9 +687,9 @@ function createTabItem(tab) {
       state.selectedTabIds.add(tab.id);
     } else {
       state.selectedTabIds.delete(tab.id);
-      if (elements.selectAll) elements.selectAll.checked = false;
+      if (elements.selectAllImages) elements.selectAllImages.checked = false;
     }
-    updateImageCount();
+    updateTabBadges();
     updateSaveButton();
   });
 
@@ -505,11 +734,80 @@ function createTabItem(tab) {
 }
 
 /**
- * Render empty state when no image tabs found
+ * Create a video item element
+ * @param {Object} video - Video metadata
+ * @returns {HTMLElement} - Video item element
+ */
+function createVideoItem(video) {
+  const item = document.createElement('div');
+  item.className = 'tab-item';
+  item.title = video.url;
+
+  // Selection Checkbox
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'tab-item-checkbox';
+  checkbox.checked = state.selectedVideoUrls.has(video.url);
+  checkbox.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (checkbox.checked) {
+      state.selectedVideoUrls.add(video.url);
+    } else {
+      state.selectedVideoUrls.delete(video.url);
+      if (elements.selectAllVideos) elements.selectAllVideos.checked = false;
+    }
+    updateSaveButton();
+  });
+
+  // Icon - video emoji
+  const icon = document.createElement('div');
+  icon.className = 'tab-item-icon';
+  icon.style.fontSize = '32px';
+  icon.style.display = 'flex';
+  icon.style.alignItems = 'center';
+  icon.style.justifyContent = 'center';
+  icon.textContent = '🎬';
+
+  // Content
+  const content = document.createElement('div');
+  content.className = 'tab-item-content';
+
+  // Title with size info
+  const title = document.createElement('div');
+  title.className = 'tab-item-title';
+  const filename = video.filename || 'video.mp4';
+  const sizeInfo = video.contentLength ? ` (${formatFileSize(video.contentLength)})` : '';
+  title.textContent = filename + sizeInfo;
+
+  // URL
+  const url = document.createElement('div');
+  url.className = 'tab-item-url';
+  url.textContent = video.url;
+
+  // Assemble
+  content.appendChild(title);
+  content.appendChild(url);
+  item.appendChild(checkbox);
+  item.appendChild(icon);
+  item.appendChild(content);
+
+  // Click handler - copy URL to clipboard
+  item.addEventListener('click', () => {
+    navigator.clipboard.writeText(video.url).then(() => {
+      showStatus('Video URL copied to clipboard', 'success');
+    });
+  });
+
+  return item;
+}
+
+/**
+ * Render empty state
+ * @param {HTMLElement} container - Container element
  * @param {string} message - Optional custom message
  */
-function renderEmptyState(message) {
-  if (!elements.tabsList) return;
+function renderEmptyState(container, message) {
+  if (!container) return;
 
   const emptyState = document.createElement('div');
   emptyState.className = 'empty-state';
@@ -520,11 +818,11 @@ function renderEmptyState(message) {
 
   const text = document.createElement('div');
   text.className = 'empty-state-text';
-  text.textContent = message || 'No image tabs found';
+  text.textContent = message || 'No items found';
 
   emptyState.appendChild(icon);
   emptyState.appendChild(text);
-  elements.tabsList.appendChild(emptyState);
+  container.appendChild(emptyState);
 }
 
 /**

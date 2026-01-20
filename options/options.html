@@ -75,7 +75,7 @@
           <div class="setting-info">
             <label for="notification" class="setting-label">Show Notifications</label>
             <p class="setting-description">
-              Display notifications when images are downloaded
+              Display notifications when media files are downloaded
             </p>
           </div>
           <div class="setting-control">
@@ -83,6 +83,38 @@
               <input type="checkbox" id="notification">
               <span class="toggle-slider"></span>
             </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Video Settings Section -->
+      <section class="settings-section">
+        <h2>Video Settings</h2>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="enableVideoDetection" class="setting-label">Enable Video Detection</label>
+            <p class="setting-description">
+              Intercept network requests to find videos playing on pages
+            </p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle">
+              <input type="checkbox" id="enableVideoDetection">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="minVideoSize" class="setting-label">Minimum Video Size (MB)</label>
+            <p class="setting-description">
+              Only detect videos larger than this size (default: 1 MB)
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="number" id="minVideoSize" class="number-input" min="0" max="1000" step="0.1" value="1">
           </div>
         </div>
       </section>
@@ -175,9 +207,9 @@
         <h2>About</h2>
 
         <div class="about-content">
-          <p><strong>Version:</strong> 1.0.0</p>
-          <p><strong>Description:</strong> Bulk download images from tabs and web pages.</p>
-          <p><strong>Status:</strong> Extractor Mode Active</p>
+          <p><strong>Version:</strong> 1.1.0</p>
+          <p><strong>Description:</strong> Bulk download images and videos from tabs and web pages.</p>
+          <p><strong>Status:</strong> Media Support Active</p>
         </div>
       </section>
     </main>

@@ -123,35 +123,74 @@ body {
 }
 
 /* ============================================================================
-   STATS SECTION
+   TAB NAVIGATION
    ============================================================================ */
 
-.stats-section {
+.tab-nav {
   display: flex;
-  justify-content: center;
-  padding: var(--spacing-md);
   background-color: var(--surface-color);
   border-bottom: 1px solid var(--border-color);
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.tab-btn {
+  flex: 1;
   padding: var(--spacing-sm) var(--spacing-md);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
 }
 
-.stat-number {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
+.tab-btn:hover {
+  background-color: rgba(66, 133, 244, 0.1);
   color: var(--primary-color);
-  line-height: 1;
 }
 
-.stat-label {
+.tab-btn.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+}
+
+.tab-badge {
+  background-color: var(--primary-color);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.tab-btn:not(.active) .tab-badge {
+  background-color: var(--secondary-color);
+}
+
+/* Video hint text */
+.video-hint {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin-top: var(--spacing-xs);
+  text-align: center;
+  padding: var(--spacing-sm);
+  margin: 0;
+}
+
+.video-hint a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.video-hint a:hover {
+  text-decoration: underline;
 }
 
 /* ============================================================================
