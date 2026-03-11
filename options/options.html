@@ -93,13 +93,25 @@
 
         <div class="setting-item">
           <div class="setting-info">
-            <label for="minImageSize" class="setting-label">Minimum Image Size (px)</label>
+            <label for="minImageWidth" class="setting-label">Minimum Image Width (px)</label>
             <p class="setting-description">
-              Skip images smaller than this dimension in Extractor Mode (default: 500)
+              Skip images narrower than this dimension in Bulk Actions (default: 100)
             </p>
           </div>
           <div class="setting-control">
-            <input type="number" id="minImageSize" class="number-input" min="0" max="5000" value="500">
+            <input type="number" id="minImageWidth" class="number-input" min="0" max="10000" value="100">
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="minImageHeight" class="setting-label">Minimum Image Height (px)</label>
+            <p class="setting-description">
+              Skip images shorter than this dimension in Bulk Actions (default: 100)
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="number" id="minImageHeight" class="number-input" min="0" max="10000" value="100">
           </div>
         </div>
 
@@ -112,6 +124,60 @@
           </div>
           <div class="setting-control">
             <input type="number" id="maxConcurrent" class="number-input" min="1" max="20" value="5">
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="maxTabsToOpen" class="setting-label">Max Tabs to Open</label>
+            <p class="setting-description">
+              Maximum number of tabs to open at once (default: 30)
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="number" id="maxTabsToOpen" class="number-input" min="1" max="100" value="30">
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="skipBlurryImages" class="setting-label">Skip Blurry Images</label>
+            <p class="setting-description">
+              Automatically detect and skip blurry images during bulk operations
+            </p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle">
+              <input type="checkbox" id="skipBlurryImages">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="blurThreshold" class="setting-label">Blur Threshold</label>
+            <p class="setting-description">
+              Sensitivity for blur detection (0-500). Lower = more strict, Higher = more lenient (default: 100)
+            </p>
+          </div>
+          <div class="setting-control">
+            <input type="number" id="blurThreshold" class="number-input" min="0" max="500" value="100">
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <label for="showBlurScore" class="setting-label">Show Blur Scores</label>
+            <p class="setting-description">
+              Display blur detection scores in the popup UI for debugging
+            </p>
+          </div>
+          <div class="setting-control">
+            <label class="toggle">
+              <input type="checkbox" id="showBlurScore">
+              <span class="toggle-slider"></span>
+            </label>
           </div>
         </div>
 

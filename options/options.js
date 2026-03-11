@@ -18,7 +18,11 @@ const DEFAULT_SETTINGS = {
   notification: true,
   maxConcurrent: 5,
   maxTabsToOpen: 30,
-  minImageSize: 500,
+  minImageWidth: 100,
+  minImageHeight: 100,
+  skipBlurryImages: false,
+  blurThreshold: 100,
+  showBlurScore: false,
   fileNaming: '{name}_{date}'
 };
 
@@ -35,8 +39,12 @@ const elements = {
   saveLocation: document.getElementById('saveLocation'),
   notification: document.getElementById('notification'),
   maxConcurrent: document.getElementById('maxConcurrent'),
-  minImageSize: document.getElementById('minImageSize'),
+  minImageWidth: document.getElementById('minImageWidth'),
+  minImageHeight: document.getElementById('minImageHeight'),
   maxTabsToOpen: document.getElementById('maxTabsToOpen'),
+  skipBlurryImages: document.getElementById('skipBlurryImages'),
+  blurThreshold: document.getElementById('blurThreshold'),
+  showBlurScore: document.getElementById('showBlurScore'),
   fileNaming: document.getElementById('fileNaming'),
   saveBtn: document.getElementById('saveBtn'),
   resetBtn: document.getElementById('resetBtn'),
@@ -99,11 +107,23 @@ async function loadSettings() {
     if (elements.maxConcurrent) {
       elements.maxConcurrent.value = settings.maxConcurrent;
     }
-    if (elements.minImageSize) {
-      elements.minImageSize.value = settings.minImageSize;
+    if (elements.minImageWidth) {
+      elements.minImageWidth.value = settings.minImageWidth;
+    }
+    if (elements.minImageHeight) {
+      elements.minImageHeight.value = settings.minImageHeight;
     }
     if (elements.maxTabsToOpen) {
       elements.maxTabsToOpen.value = settings.maxTabsToOpen;
+    }
+    if (elements.skipBlurryImages) {
+      elements.skipBlurryImages.checked = settings.skipBlurryImages;
+    }
+    if (elements.blurThreshold) {
+      elements.blurThreshold.value = settings.blurThreshold;
+    }
+    if (elements.showBlurScore) {
+      elements.showBlurScore.checked = settings.showBlurScore;
     }
     if (elements.fileNaming) {
       elements.fileNaming.value = settings.fileNaming;
@@ -127,8 +147,12 @@ async function saveSettings() {
       saveLocation: elements.saveLocation?.value ?? DEFAULT_SETTINGS.saveLocation,
       notification: elements.notification?.checked ?? DEFAULT_SETTINGS.notification,
       maxConcurrent: parseInt(elements.maxConcurrent?.value) ?? DEFAULT_SETTINGS.maxConcurrent,
-      minImageSize: parseInt(elements.minImageSize?.value) ?? DEFAULT_SETTINGS.minImageSize,
+      minImageWidth: parseInt(elements.minImageWidth?.value) ?? DEFAULT_SETTINGS.minImageWidth,
+      minImageHeight: parseInt(elements.minImageHeight?.value) ?? DEFAULT_SETTINGS.minImageHeight,
       maxTabsToOpen: parseInt(elements.maxTabsToOpen?.value) ?? DEFAULT_SETTINGS.maxTabsToOpen,
+      skipBlurryImages: elements.skipBlurryImages?.checked ?? DEFAULT_SETTINGS.skipBlurryImages,
+      blurThreshold: parseInt(elements.blurThreshold?.value) ?? DEFAULT_SETTINGS.blurThreshold,
+      showBlurScore: elements.showBlurScore?.checked ?? DEFAULT_SETTINGS.showBlurScore,
       fileNaming: elements.fileNaming?.value ?? DEFAULT_SETTINGS.fileNaming
     };
 
@@ -379,8 +403,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
  */
 function validateSetting(key, value) {
   switch (key) {
-    case 'maxConcurrent':
-      return typeof value === 'number' && value >= 1 && value <= 10;
+    case 'minImageWidth':
+    case 'minImageHeight':
+      return typeof value === 'number' && value >= 0;
 
     case 'downloadFormat':
       return ['original', 'png', 'jpg'].includes(value);

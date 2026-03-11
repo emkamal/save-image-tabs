@@ -341,6 +341,44 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Blur indicators */
+.blur-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+.blur-indicator {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.blur-indicator-only {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.blur-score {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background-color: var(--surface-color);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+}
+
+/* Blurry image styling */
+.tab-item.blurry {
+  opacity: 0.7;
+  border-left: 3px solid var(--warning-color);
+}
+
+.tab-item.blurry:hover {
+  opacity: 1;
+}
+
 /* Loading state */
 .loading {
   text-align: center;

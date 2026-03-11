@@ -9,12 +9,14 @@ A simple Chrome extension for bulk downloading images from tabs and directly fro
     - **Download Images Below**: Right-click anywhere to download all images below the cursor position.
     - **Review & Download**: Extract images to the extension popup for manual review before saving.
 - **Smart Filtering**:
-    - **Min Image Size**: Automatically skip icons, spacers, and tiny images (default 500px).
+    - **Min Image Size**: Automatically skip icons, spacers, and tiny images (default 100x100px).
+    - **Blur Detection**: Optionally detect and skip blurry images using JavaScript-based analysis (configurable threshold).
     - **Active Tab Deduplication**: Skips images already open in your tabs to prevent redundant downloads.
 - **Throttled Downloads**: Configurable concurrency limit (1-20) to prevent browser lag or server blocks.
 - **Enhanced UI**:
     - Real-time download progress bar.
     - Image thumbnails and selective save checkboxes.
+    - Blur score display with visual indicators (🟢 sharp / 🔴 blurry).
     - Intelligent auto-scrolling to the last processed image.
 
 ## Installation
@@ -28,7 +30,11 @@ A simple Chrome extension for bulk downloading images from tabs and directly fro
 
 Access the **Options** page to configure:
 - Max tabs to open at once.
-- Minimum image size for extraction.
+- Minimum image width and height for extraction.
+- **Blur Detection**:
+  - Enable/disable automatic blur detection.
+  - Adjust blur threshold (0-500, default 100).
+  - Show blur scores in popup for debugging.
 - Concurrent download limits.
 - Notification preferences.
 

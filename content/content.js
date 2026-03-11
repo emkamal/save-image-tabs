@@ -296,17 +296,27 @@ function setupMessageListeners() {
         return true;
 
       case 'openImagesBelow':
-        handleOpenImagesBelow(message.limit, message.minSize);
+        handleOpenImagesBelow(message.limit, message.minWidth, message.minHeight, {
+          skipBlurryImages: message.skipBlurryImages,
+          blurThreshold: message.blurThreshold
+        });
         sendResponse({ success: true });
         return true;
 
       case 'downloadImagesBelow':
-        handleDownloadImagesBelow(message.minSize);
+        handleDownloadImagesBelow(message.minWidth, message.minHeight, {
+          skipBlurryImages: message.skipBlurryImages,
+          blurThreshold: message.blurThreshold
+        });
         sendResponse({ success: true });
         return true;
 
       case 'reviewImagesBelow':
-        handleReviewImagesBelow(message.minSize);
+        handleReviewImagesBelow(message.minWidth, message.minHeight, {
+          skipBlurryImages: message.skipBlurryImages,
+          blurThreshold: message.blurThreshold,
+          showBlurScore: message.showBlurScore
+        });
         sendResponse({ success: true });
         return true;
 
@@ -470,6 +480,182 @@ function showNotification(message, type = 'info') {
 // UTILITY FUNCTIONS
 // ============================================================================
 
+// ============================================================================
+// BLUR DETECTION
+// ============================================================================
+
+/**
+ * Analyze image blur using Laplacian Variance method
+ * @param {HTMLImageElement} img - Image element to analyze
+ * @param {Object} settings - Blur detection settings
+ * @returns {Promise<Object>} - { blurScore: number, isBlurry: boolean, skipped: boolean, reason: string }
+ */
+async function analyzeImageBlur(img, settings = {}) {
+  const {
+    blurThreshold = 100,
+    skipBlurryImages = false
+  } = settings;
+
+  // If blur detection is disabled, return early
+  if (!skipBlurryImages) {
+    return { blurScore: null, isBlurry: false, skipped: true, reason: 'disabled' };
+  }
+
+  try {
+    // Skip if image is too large (performance optimization)
+    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_DIMENSION = 4000;
+
+    if (img.naturalWidth > MAX_DIMENSION || img.naturalHeight > MAX_DIMENSION) {
+      console.log('Skipping blur check: image too large', img.src);
+      return { blurScore: null, isBlurry: false, skipped: true, reason: 'too_large' };
+    }
+
+    // Skip SVG images (vector graphics don't have blur)
+    if (img.src.toLowerCase().endsWith('.svg')) {
+      return { blurScore: null, isBlurry: false, skipped: true, reason: 'svg' };
+    }
+
+    // Create canvas for image analysis
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // Resize to max 800px for performance (maintain aspect ratio)
+    const maxDim = 800;
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+
+    if (width > maxDim || height > maxDim) {
+      const scale = Math.min(maxDim / width, maxDim / height);
+      width = Math.floor(width * scale);
+      height = Math.floor(height * scale);
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw image to canvas
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, width, height);
+
+    // Calculate Laplacian variance
+    const blurScore = calculateLaplacianVariance(imageData);
+
+    // Determine if image is blurry
+    const isBlurry = blurScore < blurThreshold;
+
+    console.log(`Blur analysis: ${img.src.substring(0, 50)}... Score: ${blurScore.toFixed(2)} (${isBlurry ? 'BLURRY' : 'SHARP'})`);
+
+    return { blurScore, isBlurry, skipped: false, reason: null };
+
+  } catch (error) {
+    // Handle CORS errors or other issues gracefully
+    console.warn('Blur detection failed (likely CORS):', error.message);
+    return { blurScore: null, isBlurry: false, skipped: true, reason: 'error' };
+  }
+}
+
+/**
+ * Calculate Laplacian Variance for blur detection
+ * Uses edge detection to measure image sharpness
+ * @param {ImageData} imageData - Canvas image data
+ * @returns {number} - Variance score (higher = sharper)
+ */
+function calculateLaplacianVariance(imageData) {
+  const { data, width, height } = imageData;
+
+  // Laplacian kernel for edge detection
+  // [ 0  1  0 ]
+  // [ 1 -4  1 ]
+  // [ 0  1  0 ]
+
+  const laplacian = [];
+  let sum = 0;
+
+  // Process each pixel (skip borders)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      // Get grayscale value of center pixel
+      const idx = (y * width + x) * 4;
+      const center = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+
+      // Get grayscale values of neighbors
+      const top = 0.299 * data[((y - 1) * width + x) * 4] + 0.587 * data[((y - 1) * width + x) * 4 + 1] + 0.114 * data[((y - 1) * width + x) * 4 + 2];
+      const bottom = 0.299 * data[((y + 1) * width + x) * 4] + 0.587 * data[((y + 1) * width + x) * 4 + 1] + 0.114 * data[((y + 1) * width + x) * 4 + 2];
+      const left = 0.299 * data[(y * width + (x - 1)) * 4] + 0.587 * data[(y * width + (x - 1)) * 4 + 1] + 0.114 * data[(y * width + (x - 1)) * 4 + 2];
+      const right = 0.299 * data[(y * width + (x + 1)) * 4] + 0.587 * data[(y * width + (x + 1)) * 4 + 1] + 0.114 * data[(y * width + (x + 1)) * 4 + 2];
+
+      // Apply Laplacian kernel
+      const value = top + bottom + left + right - 4 * center;
+      laplacian.push(value);
+      sum += value;
+    }
+  }
+
+  // Calculate mean
+  const mean = sum / laplacian.length;
+
+  // Calculate variance
+  let variance = 0;
+  for (let i = 0; i < laplacian.length; i++) {
+    const diff = laplacian[i] - mean;
+    variance += diff * diff;
+  }
+  variance /= laplacian.length;
+
+  return variance;
+}
+
+/**
+ * Show blur analysis progress indicator
+ * @param {number} current - Current image being analyzed
+ * @param {number} total - Total images to analyze
+ */
+function showBlurAnalysisProgress(current, total) {
+  // Remove existing indicator
+  let indicator = document.getElementById('blur-analysis-indicator');
+
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'blur-analysis-indicator';
+    indicator.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10002;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideDown 0.3s ease;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    `;
+    document.body.appendChild(indicator);
+  }
+
+  indicator.textContent = `🔍 Analyzing blur... ${current}/${total}`;
+
+  // Remove when complete
+  if (current >= total) {
+    setTimeout(() => {
+      if (indicator && indicator.parentNode) {
+        indicator.style.animation = 'slideDown 0.3s ease reverse';
+        setTimeout(() => indicator.remove(), 300);
+      }
+    }, 1000);
+  }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
 /**
  * Check if element is visible in viewport
  * @param {HTMLElement} element - Element to check
@@ -578,13 +764,15 @@ console.log('Content script initialization complete');
 /**
  * Handle message to open all images below the right-click position
  * @param {number} limit - Max tabs to open
- * @param {number} minSize - Min image dimension
+ * @param {number} minWidth - Min image width
+ * @param {number} minHeight - Min image height
+ * @param {Object} blurSettings - Blur detection settings
  */
-async function handleOpenImagesBelow(limit, minSize = 0) {
-  const imagesBelow = extractImagesBelow(minSize);
+async function handleOpenImagesBelow(limit, minWidth = 0, minHeight = 0, blurSettings = {}) {
+  const imagesBelow = await extractImagesBelow(minWidth, minHeight, blurSettings);
 
   if (imagesBelow.length === 0) {
-    alert('No images matching your size criteria were found below the cursor.');
+    alert('No images matching your criteria were found below the cursor.');
     return;
   }
 
@@ -601,11 +789,14 @@ async function handleOpenImagesBelow(limit, minSize = 0) {
 
 /**
  * Handle immediate download of images below cursor
+ * @param {number} minWidth - Min image width
+ * @param {number} minHeight - Min image height
+ * @param {Object} blurSettings - Blur detection settings
  */
-async function handleDownloadImagesBelow(minSize) {
-  const images = extractImagesBelow(minSize);
+async function handleDownloadImagesBelow(minWidth = 0, minHeight = 0, blurSettings = {}) {
+  const images = await extractImagesBelow(minWidth, minHeight, blurSettings);
   if (images.length === 0) {
-    alert('No images found matching your size criteria.');
+    alert('No images found matching your criteria.');
     return;
   }
 
@@ -628,24 +819,31 @@ async function handleDownloadImagesBelow(minSize) {
 
 /**
  * Handle review of images in popup
+ * @param {number} minWidth - Min image width
+ * @param {number} minHeight - Min image height
+ * @param {Object} blurSettings - Blur detection settings
  */
-async function handleReviewImagesBelow(minSize) {
-  const images = extractImagesBelow(minSize);
+async function handleReviewImagesBelow(minWidth = 0, minHeight = 0, blurSettings = {}) {
+  const images = await extractImagesBelow(minWidth, minHeight, blurSettings);
   if (images.length === 0) {
-    alert('No images found matching your size criteria.');
+    alert('No images found matching your criteria.');
     return;
   }
 
   const imageData = images.map((img, i) => ({
     url: img.src,
     title: img.title || img.alt || `Extracted Image ${i + 1}`,
-    id: `extracted-${Date.now()}-${i}`
+    id: `extracted-${Date.now()}-${i}`,
+    blurScore: img.dataset.blurScore ? parseFloat(img.dataset.blurScore) : null,
+    isBlurry: img.dataset.isBlurry === 'true',
+    blurSkipped: img.dataset.blurSkipped === 'true'
   }));
 
   // Save to local storage for popup to pick up
   await chrome.storage.local.set({
     extractedImages: imageData,
-    extractorSourceUrl: window.location.href
+    extractorSourceUrl: window.location.href,
+    showBlurScore: blurSettings.showBlurScore
   });
 
   // Open the extension popup
@@ -660,12 +858,16 @@ async function handleReviewImagesBelow(minSize) {
 
 /**
  * Helper to find and filter images relative to cursor
+ * @param {number} minWidth - Minimum image width
+ * @param {number} minHeight - Minimum image height
+ * @param {Object} blurSettings - Blur detection settings
  */
-function extractImagesBelow(minSize) {
+async function extractImagesBelow(minWidth = 0, minHeight = 0, blurSettings = {}) {
   const allImages = Array.from(document.querySelectorAll('img'));
   const seenUrls = new Set();
 
-  return allImages
+  // First pass: filter by position, URL, and size
+  const candidateImages = allImages
     .filter(img => {
       // Coordinate check
       const rect = img.getBoundingClientRect();
@@ -679,7 +881,7 @@ function extractImagesBelow(minSize) {
       // Size check (use natural size if available, otherwise client size)
       const width = img.naturalWidth || img.clientWidth;
       const height = img.naturalHeight || img.clientHeight;
-      if (width < minSize && height < minSize) return false;
+      if (width < minWidth || height < minHeight) return false;
 
       seenUrls.add(img.src);
       return true;
@@ -689,6 +891,42 @@ function extractImagesBelow(minSize) {
       const rectB = b.getBoundingClientRect();
       return (rectA.top + window.scrollY) - (rectB.top + window.scrollY);
     });
+
+  // Second pass: blur detection (if enabled)
+  if (blurSettings.skipBlurryImages) {
+    const filteredImages = [];
+
+    for (let i = 0; i < candidateImages.length; i++) {
+      const img = candidateImages[i];
+
+      // Show progress
+      showBlurAnalysisProgress(i + 1, candidateImages.length);
+
+      // Analyze blur
+      const blurResult = await analyzeImageBlur(img, blurSettings);
+
+      // Store blur data on image element for later use
+      img.dataset.blurScore = blurResult.blurScore;
+      img.dataset.isBlurry = blurResult.isBlurry;
+      img.dataset.blurSkipped = blurResult.skipped;
+
+      // Include image if not blurry or if blur check was skipped
+      if (!blurResult.isBlurry || blurResult.skipped) {
+        filteredImages.push(img);
+      } else {
+        console.log(`Skipping blurry image: ${img.src.substring(0, 50)}... (score: ${blurResult.blurScore.toFixed(2)})`);
+      }
+
+      // Yield to UI thread every 5 images
+      if (i % 5 === 0) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+    }
+
+    return filteredImages;
+  }
+
+  return candidateImages;
 }
 
 /**

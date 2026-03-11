@@ -29,7 +29,11 @@ chrome.runtime.onInstalled.addListener((details) => {
       notification: true,
       maxConcurrent: 5,
       maxTabsToOpen: 30,
-      minImageSize: 500
+      minImageWidth: 100,
+      minImageHeight: 100,
+      skipBlurryImages: false,
+      blurThreshold: 100,
+      showBlurScore: false
     }, () => {
       console.log('Default settings initialized');
     });
@@ -188,7 +192,11 @@ chrome.commands.onCommand.addListener((command) => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const settings = await chrome.storage.sync.get({
     maxTabsToOpen: 30,
-    minImageSize: 500
+    minImageWidth: 100,
+    minImageHeight: 100,
+    skipBlurryImages: false,
+    blurThreshold: 100,
+    showBlurScore: false
   });
 
   if (info.menuItemId === 'openImagesBelow') {
@@ -196,7 +204,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       await chrome.tabs.sendMessage(tab.id, {
         action: 'openImagesBelow',
         limit: settings.maxTabsToOpen,
-        minSize: settings.minImageSize
+        minWidth: settings.minImageWidth,
+        minHeight: settings.minImageHeight,
+        skipBlurryImages: settings.skipBlurryImages,
+        blurThreshold: settings.blurThreshold
       });
     } catch (error) {
       console.log('Context menu message failed (likely page needs refresh):', error.message);
@@ -205,7 +216,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
       await chrome.tabs.sendMessage(tab.id, {
         action: 'downloadImagesBelow',
-        minSize: settings.minImageSize
+        minWidth: settings.minImageWidth,
+        minHeight: settings.minImageHeight,
+        skipBlurryImages: settings.skipBlurryImages,
+        blurThreshold: settings.blurThreshold
       });
     } catch (error) {
       console.log('Context menu message failed:', error.message);
@@ -214,7 +228,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
       await chrome.tabs.sendMessage(tab.id, {
         action: 'reviewImagesBelow',
-        minSize: settings.minImageSize
+        minWidth: settings.minImageWidth,
+        minHeight: settings.minImageHeight,
+        skipBlurryImages: settings.skipBlurryImages,
+        blurThreshold: settings.blurThreshold,
+        showBlurScore: settings.showBlurScore
       });
     } catch (error) {
       console.log('Context menu message failed:', error.message);

@@ -18,6 +18,8 @@ const state = {
   isReviewMode: false
 };
 
+const LAST_USED_FOLDER_NAME_KEY = 'lastUsedFolderName';
+
 // ============================================================================
 // DOM ELEMENTS
 // ============================================================================
@@ -45,7 +47,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load settings and image tabs in parallel
     await Promise.all([
       loadSettings(),
-      loadImageTabs()
+      loadImageTabs(),
+      loadLastUsedFolderName()
     ]);
 
     // Set up event listeners
@@ -74,6 +77,18 @@ async function loadSettings() {
   }
 }
 
+async function loadLastUsedFolderName() {
+  try {
+    const localData = await chrome.storage.local.get([LAST_USED_FOLDER_NAME_KEY]);
+    const lastUsedFolderName = localData[LAST_USED_FOLDER_NAME_KEY];
+    if (elements.folderName && typeof lastUsedFolderName === 'string' && lastUsedFolderName.length > 0) {
+      elements.folderName.value = normalizeFolderName(lastUsedFolderName);
+    }
+  } catch (error) {
+    console.error('Error loading last used folder name:', error);
+  }
+}
+
 /**
  * Load all image tabs from the background script
  * This queries all tabs and filters for images
@@ -92,12 +107,17 @@ async function loadImageTabs() {
     updateSaveButton();
 
     // Check for extracted images first (Review Mode)
-    const localData = await chrome.storage.local.get(['extractedImages', 'extractorSourceUrl']);
+    const localData = await chrome.storage.local.get(['extractedImages', 'extractorSourceUrl', 'showBlurScore']);
 
     if (localData.extractedImages && localData.extractedImages.length > 0) {
       state.isReviewMode = true;
       state.imageTabs = localData.extractedImages;
       state.selectedTabIds = new Set(state.imageTabs.map(tab => tab.id));
+
+      // Load showBlurScore setting if available
+      if (localData.showBlurScore !== undefined) {
+        state.settings.showBlurScore = localData.showBlurScore;
+      }
 
       console.log('Review mode: loaded extracted images:', state.imageTabs.length);
 
@@ -192,6 +212,9 @@ function setupEventListeners() {
   // Save all images button
   elements.saveAllBtn?.addEventListener('click', handleSaveAll);
 
+  // Folder name normalization (spaces -> hyphens)
+  elements.folderName?.addEventListener('input', handleFolderNameInput);
+
   // Refresh button
   if (elements.refreshBtn) {
     elements.refreshBtn.addEventListener('click', async () => {
@@ -265,10 +288,14 @@ async function handleSaveAll() {
   }
 
   const selectedTabs = state.imageTabs.filter(tab => state.selectedTabIds.has(tab.id));
-  const folderName = elements.folderName?.value.trim() || '';
+  const folderName = normalizeFolderNameForSave(elements.folderName?.value.trim() || '');
   const shouldClose = elements.closeTabs?.checked ?? false;
 
   try {
+    if (folderName) {
+      await chrome.storage.local.set({ [LAST_USED_FOLDER_NAME_KEY]: folderName });
+    }
+
     // Disable button and show progress
     updateButtonState('saving', 0, selectedTabs.length);
 
@@ -327,6 +354,13 @@ async function handleSaveAll() {
     elements.saveAllBtn.classList.remove('btn-progress');
     elements.saveAllBtn.disabled = false;
     elements.saveAllBtn.innerHTML = '<span class="btn-icon">💾</span>Save All Images';
+  }
+}
+
+function handleFolderNameInput(event) {
+  const normalizedValue = normalizeFolderName(event.target.value);
+  if (event.target.value !== normalizedValue) {
+    event.target.value = normalizedValue;
   }
 }
 
@@ -447,6 +481,11 @@ function createTabItem(tab) {
   item.className = 'tab-item';
   item.title = tab.url;
 
+  // Add blurry class if image is flagged as blurry
+  if (tab.isBlurry && !tab.blurSkipped) {
+    item.classList.add('blurry');
+  }
+
   // Selection Checkbox
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
@@ -488,6 +527,34 @@ function createTabItem(tab) {
   url.className = 'tab-item-url';
   url.textContent = tab.url;
 
+  // Blur indicator (if blur data available)
+  if (tab.blurScore !== null && tab.blurScore !== undefined && state.settings.showBlurScore) {
+    const blurInfo = document.createElement('div');
+    blurInfo.className = 'blur-info';
+
+    const indicator = document.createElement('span');
+    indicator.className = 'blur-indicator';
+    indicator.textContent = tab.isBlurry ? '🔴' : '🟢';
+    indicator.title = tab.isBlurry ? 'Blurry image' : 'Sharp image';
+
+    const score = document.createElement('span');
+    score.className = 'blur-score';
+    score.textContent = `Blur: ${tab.blurScore.toFixed(1)}`;
+    score.title = `Blur score: ${tab.blurScore.toFixed(2)} (threshold: ${state.settings.blurThreshold || 100})`;
+
+    blurInfo.appendChild(indicator);
+    blurInfo.appendChild(score);
+    content.appendChild(blurInfo);
+  } else if (tab.blurScore !== null && tab.blurScore !== undefined) {
+    // Show just indicator if showBlurScore is disabled
+    const indicator = document.createElement('span');
+    indicator.className = 'blur-indicator-only';
+    indicator.textContent = tab.isBlurry ? '🔴' : '🟢';
+    indicator.title = tab.isBlurry ? `Blurry (score: ${tab.blurScore.toFixed(1)})` : `Sharp (score: ${tab.blurScore.toFixed(1)})`;
+    title.appendChild(document.createTextNode(' '));
+    title.appendChild(indicator);
+  }
+
   // Assemble
   content.appendChild(title);
   content.appendChild(url);
@@ -495,11 +562,13 @@ function createTabItem(tab) {
   item.appendChild(icon);
   item.appendChild(content);
 
-  // Click handler - switch to tab
-  item.addEventListener('click', () => {
-    chrome.tabs.update(tab.id, { active: true });
-    window.close();
-  });
+  // Click handler - switch to tab (only in normal mode, not review mode)
+  if (!state.isReviewMode) {
+    item.addEventListener('click', () => {
+      chrome.tabs.update(tab.id, { active: true });
+      window.close();
+    });
+  }
 
   return item;
 }
@@ -635,6 +704,14 @@ function isImageUrl(url) {
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico'];
   const urlLower = url.toLowerCase().split('?')[0].split('#')[0];
   return imageExtensions.some(ext => urlLower.endsWith(ext));
+}
+
+function normalizeFolderName(value) {
+  return value.replace(/\s+/g, '-');
+}
+
+function normalizeFolderNameForSave(value) {
+  return normalizeFolderName(value).replace(/^-+|-+$/g, '');
 }
 
 /**
