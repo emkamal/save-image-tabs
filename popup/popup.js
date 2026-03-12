@@ -214,6 +214,7 @@ function setupEventListeners() {
 
   // Folder name normalization (spaces -> hyphens)
   elements.folderName?.addEventListener('input', handleFolderNameInput);
+  elements.folderName?.addEventListener('keydown', handleFolderNameKeyDown);
 
   // Refresh button
   if (elements.refreshBtn) {
@@ -361,6 +362,13 @@ function handleFolderNameInput(event) {
   const normalizedValue = normalizeFolderName(event.target.value);
   if (event.target.value !== normalizedValue) {
     event.target.value = normalizedValue;
+  }
+}
+
+function handleFolderNameKeyDown(event) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    handleSaveAll();
   }
 }
 
