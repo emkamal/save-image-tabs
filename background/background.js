@@ -65,6 +65,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     title: 'Review and download images...',
     contexts: ['page']
   });
+
+  chrome.contextMenus.create({
+    id: 'resetLastOpenedImage',
+    title: 'Reset last opened image highlight',
+    contexts: ['page']
+  });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -233,6 +239,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         skipBlurryImages: settings.skipBlurryImages,
         blurThreshold: settings.blurThreshold,
         showBlurScore: settings.showBlurScore
+      });
+    } catch (error) {
+      console.log('Context menu message failed:', error.message);
+    }
+  } else if (info.menuItemId === 'resetLastOpenedImage') {
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'resetLastOpenedImageHighlight'
       });
     } catch (error) {
       console.log('Context menu message failed:', error.message);

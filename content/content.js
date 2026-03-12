@@ -320,6 +320,11 @@ function setupMessageListeners() {
         sendResponse({ success: true });
         return true;
 
+      case 'resetLastOpenedImageHighlight':
+        clearLastOpenedImageHighlight();
+        sendResponse({ success: true });
+        return true;
+
       default:
         sendResponse({ success: false, error: 'Unknown action' });
     }
@@ -964,18 +969,28 @@ function showReviewReadyBubble(count) {
 }
 
 /**
+ * Remove the current last-opened-image highlight and label.
+ */
+function clearLastOpenedImageHighlight() {
+  const existing = document.querySelector('.last-opened-image-highlight');
+  if (existing) {
+    existing.style.outline = '';
+    existing.style.outlineOffset = '';
+    existing.classList.remove('last-opened-image-highlight');
+  }
+
+  const existingLabel = document.querySelector('.last-opened-image-label');
+  if (existingLabel) {
+    existingLabel.remove();
+  }
+}
+
+/**
  * Visually highlight the last opened image
  * @param {HTMLImageElement} img
  */
 function highlightLastImage(img) {
-  // Remove existing highlights
-  const existing = document.querySelector('.last-opened-image-highlight');
-  if (existing) {
-    existing.style.outline = '';
-    existing.classList.remove('last-opened-image-highlight');
-  }
-  const existingLabel = document.querySelector('.last-opened-image-label');
-  if (existingLabel) existingLabel.remove();
+  clearLastOpenedImageHighlight();
 
   // Add highlight style
   img.style.outline = '5px solid #4285f4'; // Chrome blue
